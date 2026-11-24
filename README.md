@@ -34,7 +34,7 @@ Download the newest `cinema-launcher-<version>.apk` from the [Releases page](htt
 "Build" seven times) and USB or network debugging in Developer options, connect with `adb connect <TV-IP>:5555`, then:
 
 ```powershell
-adb install -r cinema-launcher-1.2.apk
+adb install -r cinema-launcher-1.3.apk
 ```
 
 A newer version installs the same way, over the old one; your Plex link and app order stay.
@@ -67,7 +67,9 @@ rows and its notification panel; voice search, the Assistant, Sony's settings an
 
 On this BRAVIA the remote's Google Play button sends key code 195 (`KEYCODE_BUTTON_8`), which Sony's vendor service
 turns into "open Google TV". Cinema's accessibility service takes that one key before Sony's handler sees it and
-opens Plex instead; every other key passes through unchanged, and it reads nothing from the screen.
+opens Plex instead; every other key passes through unchanged, and it reads nothing from the screen. It also notices
+when Plex has finished loading (from the type of Plex's window events only), so a resume link goes out as soon as
+Plex can take it.
 
 Switch it on with the remote: **Settings > Device Preferences > Accessibility > Cinema: Google Play button opens Plex**,
 then confirm Android's warning. Switch it off there to get the original behaviour back. To remap a different button,
@@ -125,6 +127,7 @@ app in place: uninstall it first.
 | `src/main/kotlin/PlexLinkActivity.kt` | The "enter this code at plex.tv/link" screen |
 | `src/main/kotlin/AllAppsActivity.kt` | The All apps grid |
 | `src/main/kotlin/ButtonService.kt` | Google Play button → Plex, and Home → Cinema when it isn't the home app (accessibility key filter) |
+| `src/main/kotlin/PlexWatch.kt` | Tells when Plex is ready for a resume link, from Plex's accessibility events |
 
 - **Finding the server:** the launcher asks plex.tv for your servers and uses the first address that answers from
   the TV: home network over HTTPS, then plain HTTP, then remote, then Plex's relay. It remembers the one that worked
@@ -138,12 +141,16 @@ app in place: uninstall it first.
   list refreshes every time you come back to the home screen. Without artwork (or when it won't load), Cinema draws
   the app's banner at the highest density the app ships, right of the title, on its edge colour; bright banners are
   dimmed so the text stays readable and a dark room stays dark. The colour glow is left for apps without a banner.
-- **Opening an item:** OK opens Plex normally, waits 5.5 s, then sends Plex's own link format (found inside the Plex app),
-  `plex://watch/video?uri=server://<server>/com.plexapp.plugins.library/library/metadata/<id>&offset=<seconds>`, every
-  3 s until the server reports the item playing (at most 36 s). The offset makes Plex resume where you stopped.
-  The wait is needed because a Plex that is *started* by a link ignores links for minutes, and right after starting
-  it ignores them for a few seconds; extra links while it loads do no harm. All of this was measured on this TV.
-  A 4K file whose audio the server converts takes about 15 s from OK to picture.
+- **Opening an item:** OK opens Plex normally, waits until Plex is ready, then sends Plex's own link format (found inside the Plex app),
+  `plex://watch/video?uri=server://<server>/com.plexapp.plugins.library/library/metadata/<id>&offset=<seconds>`, once.
+  The offset makes Plex resume where you stopped. Only if the server reports nothing playing 25 s later does it send
+  the link a second time. Measured on this TV: a Plex that is *started* by a link ignores links for minutes; a Plex
+  started from scratch shows "Can't reach server" for a link at 6 s and plays it cleanly at 9 s; and playback then
+  takes 5 to 17 s to start, during which a new link restarts it with an "Item not known" error.
+  "Ready" comes from Plex's accessibility events, seen by Cinema's accessibility service (event type and class name
+  only): from scratch, Plex is ready when its home list first changes, once your server's data arrives (7 to 11 s);
+  when it was already running, focus lands within a split second of its window appearing. Without the service
+  Cinema waits a fixed 9 s. See `PlexWatch.kt`.
 
 Cinema is released under the MIT License, see `LICENSE`. Space Grotesk font: SIL Open Font License, see
 `licenses/SpaceGrotesk-OFL.txt`. The settings icon is adapted from

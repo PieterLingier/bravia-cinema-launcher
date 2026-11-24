@@ -40,5 +40,5 @@
     <string name="all_apps_hint">Hold OK on an app to add it to the home row or remove it</string>
 
     <string name="button_service_label">Cinema: Google Play button opens Plex</string>
-    <string name="button_service_description">Makes the Google Play button on the remote open Plex. If another app is the default home screen, it also makes Home open Cinema. Android passes this service the remote\'s key presses; it acts only on those two buttons and passes every other key on unchanged. It doesn\'t read the screen.</string>
+    <string name="button_service_description">Makes the Google Play button on the remote open Plex. If another app is the default home screen, it also makes Home open Cinema. Android passes this service the remote\'s key presses; it acts only on those two buttons and passes every other key on unchanged. To resume Plex items without errors, it also notices when Plex has finished loading, from the type of Plex\'s window events only. It doesn\'t read the screen.</string>
 </resources>

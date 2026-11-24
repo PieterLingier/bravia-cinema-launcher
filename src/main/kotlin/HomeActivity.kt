@@ -470,9 +470,11 @@ class HomeActivity : Activity() {
 
     /**
      * Plex quirks, measured on this TV: a Plex *started* by a link ignores that link and every later
-     * one for minutes; a Plex started normally ignores links for its first seconds, then follows
-     * them; and extra links while it's loading do no harm. So: open Plex normally, wait, then send
-     * the link (with the resume offset) every 3 s until the server reports the item playing.
+     * one for minutes. A cold-started Plex shows "Can't reach server" for a link at 6 s, and plays it
+     * cleanly at 9 s; it then takes 5-17 s until playback starts, and a new link in that time
+     * restarts it with an "Item not known" error. So: open Plex normally, send the link (with the
+     * resume offset) once Plex says it's ready (PlexWatch, via the accessibility service; without
+     * it, at 9 s), and only retry if the server reports nothing playing 25 s later.
      * Coming back to the home screen stops this (onResume). Sending links while Plex is in front
      * needs "display over other apps" (README).
      */
@@ -488,28 +490,48 @@ class HomeActivity : Activity() {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val plexOnScreen = CompletableDeferred<Unit>().also { stopSignal = it }
         val launched = SystemClock.elapsedRealtime()
+        val launchedUptime = SystemClock.uptimeMillis() // PlexWatch's clock
         startSafely(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 
         playbackJob?.cancel()
         playbackJob = scope.launch {
-            // A cold-starting Plex must first read its own start intent (a few seconds after its
-            // window appears); a link that arrives before that becomes its start link, and then it
-            // ignores links altogether. Whether Plex was already running can't be told reliably
-            // from here (its window appears after ~0.7 s either way), so always wait.
             val toScreen = withTimeoutOrNull(6_000) {
                 plexOnScreen.await()
                 SystemClock.elapsedRealtime() - launched
             } ?: 6_000L
-            Log.i(TAG, "Plex on screen after $toScreen ms; first link at $FIRST_LINK_MS ms")
-            delay((FIRST_LINK_MS - (SystemClock.elapsedRealtime() - launched)).coerceAtLeast(0))
+            // Wait for Plex to say it's ready (see PlexWatch), never longer than READY_MAX_MS. If
+            // none of its events arrive at all (service off), fall back to the fixed wait.
+            var ready: Long? = null
+            if (PlexWatch.connected) {
+                ready = withTimeoutOrNull((READY_MAX_MS - (SystemClock.elapsedRealtime() - launched)).coerceAtLeast(0)) {
+                    while (PlexWatch.readyAt <= launchedUptime) {
+                        val silent = PlexWatch.lastEventAt <= launchedUptime
+                        if (silent && SystemClock.uptimeMillis() - launchedUptime > NO_EVENTS_MS) return@withTimeoutOrNull -1L
+                        delay(100)
+                    }
+                    PlexWatch.readyAt - launchedUptime
+                }
+            }
+            if (ready != null && ready >= 0) {
+                Log.i(TAG, "Plex on screen after $toScreen ms, ready after $ready ms")
+                delay(READY_MARGIN_MS)
+            } else if (ready == null && PlexWatch.connected) {
+                Log.i(TAG, "Plex on screen after $toScreen ms, no ready signal in $READY_MAX_MS ms")
+            } else {
+                // No accessibility service: a fixed wait, enough for a cold start.
+                Log.i(TAG, "Plex on screen after $toScreen ms; first link at $FIRST_LINK_MS ms")
+                delay((FIRST_LINK_MS - (SystemClock.elapsedRealtime() - launched)).coerceAtLeast(0))
+            }
             val start = SystemClock.elapsedRealtime()
             var nextLink = 0L
             var nextCheck = 1500L
             var links = 0
             var canCheck = true
+            // One link, then wait: Plex can take 5-17 s to start playing, and a new link in that
+            // time restarts it ("Item not known…" errors). Retry once if nothing plays by then.
             while (true) {
                 val elapsed = SystemClock.elapsedRealtime() - start
-                if (elapsed > 36_000 || (!canCheck && links >= 4)) {
+                if (elapsed > GIVE_UP_MS || links >= MAX_LINKS && elapsed >= nextLink || !canCheck && links >= 1) {
                     Log.i(TAG, "stopped sending ${item.ratingKey} after $links link(s), ${elapsed} ms")
                     return@launch
                 }
@@ -521,12 +543,12 @@ class HomeActivity : Activity() {
                         return@launch
                     }
                     links++
-                    nextLink = elapsed + 3_000
+                    nextLink = elapsed + RETRY_AFTER_MS
                 }
                 if (canCheck && elapsed >= nextCheck) {
                     val at = withContext(Dispatchers.IO) { plex.playingAt(item.ratingKey) }
                     if (at == null) {
-                        canCheck = false // e.g. a shared server: send a few links, then stop
+                        canCheck = false // e.g. a shared server: no way to confirm, keep the one link
                     } else if (at >= 0) {
                         Log.i(TAG, "playback of ${item.ratingKey} confirmed at ${at / 1000} s (asked for ${item.resumeSeconds} s) " +
                             "after ${SystemClock.elapsedRealtime() - start} ms, $links link(s)")
@@ -666,7 +688,13 @@ class HomeActivity : Activity() {
     private companion object {
         const val TAG = "Cinema"
         const val APP_COLUMNS = 7 // 7 x 112 dp tiles + 6 x 12 dp gaps fit the 864 dp between the margins
-        const val FIRST_LINK_MS = 5_500L // measured: a cold-started Plex is safe to link after ~4 s
+        const val FIRST_LINK_MS = 9_000L // without the ready signal; cold start: a link at 6 s errors, at 9 s it plays
+        const val READY_MAX_MS = 15_000L // longest wait for Plex's ready signal (cold: 7-11 s)
+        const val NO_EVENTS_MS = 4_000L // no Plex events by then: they aren't coming, use FIRST_LINK_MS
+        const val READY_MARGIN_MS = 500L // after the signal (warm: a link 1 s after the window plays)
+        const val RETRY_AFTER_MS = 25_000L // playback can take up to ~17 s to start; don't interrupt it
+        const val MAX_LINKS = 2
+        const val GIVE_UP_MS = 60_000L
         const val ACTION_VIEW_INPUTS = "com.android.tv.action.VIEW_INPUTS"
         const val LIVE_TV_PACKAGE = "com.sony.dtv.tvx"
     }

@@ -17,8 +17,8 @@ import android.view.accessibility.AccessibilityEvent
  *   home screen stays switched on (on Google TV it also runs the settings panel), so Android would
  *   send Home there. When Cinema *is* the home app, Home is left to Android, unchanged.
  *
- * Every other key is passed on untouched; this service reads no screen content and receives no
- * accessibility events.
+ * Every other key is passed on untouched. The service also receives Plex's window events (type and
+ * class name only, never screen content) so [PlexWatch] can tell when Plex is ready for a link.
  */
 class ButtonService : AccessibilityService() {
 
@@ -73,7 +73,26 @@ class ButtonService : AccessibilityService() {
         }
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
+    override fun onServiceConnected() {
+        // Also set in button_service.xml, but Android keeps the old settings after an app update
+        // until the service is switched off and on, so set them here too.
+        serviceInfo = serviceInfo.apply {
+            eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
+                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or AccessibilityEvent.TYPE_VIEW_FOCUSED
+            packageNames = arrayOf(PlexClient.PLEX_PACKAGE)
+        }
+        PlexWatch.connected = true
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        PlexWatch.connected = false
+        return super.onUnbind(intent)
+    }
+
+    /** Plex's window events only (see button_service.xml); used to see when Plex has loaded. */
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event != null) PlexWatch.onEvent(event.eventType, event.className?.toString())
+    }
 
     override fun onInterrupt() = Unit
 
