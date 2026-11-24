@@ -26,6 +26,11 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="plex" />
         </intent>
+        <!-- To see which app is the default home (Android 11+ hides other apps otherwise). -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.HOME" />
+        </intent>
         <provider android:authorities="android.media.tv" />
     </queries>
 

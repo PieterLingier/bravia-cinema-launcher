@@ -34,7 +34,7 @@ Download the newest `cinema-launcher-<version>.apk` from the [Releases page](htt
 "Build" seven times) and USB or network debugging in Developer options, connect with `adb connect <TV-IP>:5555`, then:
 
 ```powershell
-adb install -r cinema-launcher-1.1.apk
+adb install -r cinema-launcher-1.2.apk
 ```
 
 A newer version installs the same way, over the old one; your Plex link and app order stay.
@@ -73,6 +73,23 @@ Switch it on with the remote: **Settings > Device Preferences > Accessibility > 
 then confirm Android's warning. Switch it off there to get the original behaviour back. To remap a different button,
 change `REMAPPED_KEY` in `ButtonService.kt`.
 
+## Keeping Google's home screen (Google TV)
+
+On Google TV, Google's home screen (`com.google.android.apps.tv.launcherx`) also runs the settings panel, so
+disabling it can break the remote's Settings button. Instead, leave it on and switch on Cinema's accessibility
+service (above): while another app is the default home screen, the service makes **Home open Cinema**. When Cinema
+is the home screen itself, as after the `pm disable-user` step, the service leaves Home alone.
+
+Holding Home then no longer reaches Google's home screen. Untested on Google TV so far; the rest of Cinema should
+work there, but Inputs needs a TV with inputs, and the Google Play button may not exist on that remote. On
+Android 13 and newer the accessibility switch can be greyed out for apps installed outside the Play Store: allow it
+under the app's info ("Allow restricted settings"), or switch it on over adb (this replaces the list of enabled
+accessibility services, so only use it when no others are on):
+
+```powershell
+adb shell settings put secure enabled_accessibility_services local.cinema.launcher/local.cinema.launcher.ButtonService
+```
+
 ## Go back to the Google home screen
 
 ```powershell
@@ -107,7 +124,7 @@ app in place: uninstall it first.
 | `src/main/kotlin/Rows.kt` | The tiles of both rows and the focus zoom |
 | `src/main/kotlin/PlexLinkActivity.kt` | The "enter this code at plex.tv/link" screen |
 | `src/main/kotlin/AllAppsActivity.kt` | The All apps grid |
-| `src/main/kotlin/ButtonService.kt` | Google Play button → Plex (accessibility key filter) |
+| `src/main/kotlin/ButtonService.kt` | Google Play button → Plex, and Home → Cinema when it isn't the home app (accessibility key filter) |
 
 - **Finding the server:** the launcher asks plex.tv for your servers and uses the first address that answers from
   the TV: home network over HTTPS, then plain HTTP, then remote, then Plex's relay. It remembers the one that worked
