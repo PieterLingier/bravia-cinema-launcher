@@ -69,6 +69,7 @@ class HomeActivity : Activity() {
     private lateinit var heroProgress: ProgressBar
     private lateinit var heroLeft: TextView
     private lateinit var cwLabel: TextView
+    private lateinit var cwSourceLabel: TextView
     private lateinit var appsLabel: TextView
     private lateinit var cwRow: HorizontalGridView
     private lateinit var appsGrid: VerticalGridView
@@ -117,6 +118,7 @@ class HomeActivity : Activity() {
         heroProgress = findViewById(R.id.heroProgress)
         heroLeft = findViewById(R.id.heroLeft)
         cwLabel = findViewById(R.id.cwLabel)
+        cwSourceLabel = findViewById(R.id.cwSource)
         appsLabel = findViewById(R.id.appsLabel)
         cwRow = findViewById(R.id.cwRow)
         appsGrid = findViewById(R.id.appsGrid)
@@ -225,19 +227,43 @@ class HomeActivity : Activity() {
 
     private fun action(kind: CwCard.Kind, title: Int, message: String) = CwCard.Action(kind, getString(title), message)
 
+    /** The app Continue watching comes from: the user's pick (Plex or Netflix), Plex if that's gone. */
+    private fun cwSource(): String {
+        val pick = prefs.cwSource
+        return if (pick in CW_SOURCES && isInstalled(pick)) pick else PlexClient.PLEX_PACKAGE
+    }
+
+    private fun isInstalled(pkg: String): Boolean =
+        try {
+            packageManager.getApplicationInfo(pkg, 0).enabled
+        } catch (e: Exception) {
+            false
+        }
+
+    private fun sourceName(pkg: String): String =
+        getString(if (pkg == NETFLIX_PACKAGE) R.string.netflix else R.string.plex)
+
     private fun refreshContinueWatching() {
         cwJob?.cancel()
+        val source = cwSource()
+        val name = sourceName(source)
+        cwSourceLabel.text = getString(R.string.from_app, name)
         cwJob = scope.launch {
-            val state = withContext(Dispatchers.IO) { plex.continueWatching() }
-            val cards = when (state) {
-                is CwState.NotLinked -> listOf(action(CwCard.Kind.LINK, R.string.link_title, getString(R.string.link_message)))
-                is CwState.Failed -> listOf(action(CwCard.Kind.RETRY, R.string.unreachable_title, state.message))
-                is CwState.Loaded ->
-                    if (state.items.isEmpty()) {
-                        listOf(action(CwCard.Kind.OPEN_PLEX, R.string.nothing_title, getString(R.string.nothing_message)))
-                    } else {
-                        state.items.map { CwCard.Item(it) }
-                    }
+            val nothing = { listOf(CwCard.Action(CwCard.Kind.OPEN_SOURCE, getString(R.string.nothing_title), getString(R.string.nothing_message, name))) }
+            val cards = if (source == PlexClient.PLEX_PACKAGE) {
+                when (val state = withContext(Dispatchers.IO) { plex.continueWatching() }) {
+                    is CwState.NotLinked -> listOf(action(CwCard.Kind.LINK, R.string.link_title, getString(R.string.link_message)))
+                    is CwState.Failed -> listOf(action(CwCard.Kind.RETRY, R.string.unreachable_title, state.message))
+                    is CwState.Loaded -> if (state.items.isEmpty()) nothing() else state.items.map { CwCard.Item(it) }
+                }
+            } else {
+                // Apps other than Plex: what they publish for the TV home screen (see TvArt).
+                val items = withContext(Dispatchers.IO) { tvArt.continueWatching(source) }
+                when {
+                    items == null -> listOf(CwCard.Action(CwCard.Kind.GRANT, getString(R.string.grant_title, name), getString(R.string.grant_message)))
+                    items.isEmpty() -> nothing()
+                    else -> items.map { CwCard.Item(it) }
+                }
             }
             showCards(cards)
             // Plex's backdrop comes from Continue watching.
@@ -317,7 +343,7 @@ class HomeActivity : Activity() {
      */
     private fun artFor(app: AppEntry): List<String> {
         val art = if (app.packageName == PlexClient.PLEX_PACKAGE) {
-            cwAdapter.cards.mapNotNull { (it as? CwCard.Item)?.item?.artUrl }.take(1)
+            cwAdapter.cards.mapNotNull { (it as? CwCard.Item)?.item?.takeIf { i -> i.app == app.packageName }?.artUrl }.take(1)
         } else {
             appArt[app.packageName].orEmpty()
         }
@@ -455,17 +481,44 @@ class HomeActivity : Activity() {
 
     private fun openCard(card: CwCard) {
         when (card) {
-            is CwCard.Item -> openInPlex(card.item)
+            is CwCard.Item -> if (card.item.app == PlexClient.PLEX_PACKAGE) openInPlex(card.item) else openInApp(card.item)
             is CwCard.Action -> when (card.kind) {
                 CwCard.Kind.LINK -> startActivity(Intent(this, PlexLinkActivity::class.java))
                 CwCard.Kind.RETRY -> {
                     showCards(listOf(action(CwCard.Kind.LOADING, R.string.loading, getString(R.string.loading_message))))
                     refreshContinueWatching()
                 }
-                CwCard.Kind.OPEN_PLEX -> launchPackage(PlexClient.PLEX_PACKAGE)
-                CwCard.Kind.LOADING -> Unit
+                CwCard.Kind.OPEN_SOURCE -> launchPackage(cwSource())
+                CwCard.Kind.GRANT, CwCard.Kind.LOADING -> Unit
             }
         }
+    }
+
+    /**
+     * A Watch Next item (Netflix…): its own link, as the app published it for the TV home screen,
+     * which resumes it there. The link may only open that same app; if it fails, the app opens.
+     */
+    private fun openInApp(item: CwItem) {
+        val intent = try {
+            Intent.parseUri(item.deepLink, Intent.URI_INTENT_SCHEME)
+        } catch (e: Exception) {
+            null
+        }
+        if (intent != null) {
+            if (intent.component?.packageName.let { it != null && it != item.app }) intent.component = null
+            intent.selector = null
+            intent.setPackage(item.app)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                startActivity(intent)
+                return
+            } catch (e: ActivityNotFoundException) {
+                Log.w(TAG, "${item.app} has no screen for its Watch Next link")
+            } catch (e: Exception) {
+                Log.w(TAG, "Watch Next link failed: ${e.javaClass.simpleName}")
+            }
+        }
+        launchPackage(item.app)
     }
 
     /**
@@ -594,18 +647,33 @@ class HomeActivity : Activity() {
     }
 
     private fun editApp(app: AppEntry) {
-        val choices = arrayOf(getString(R.string.move), getString(R.string.remove_from_row))
+        // Plex and Netflix can feed Continue watching: offer it on the one that doesn't now.
+        val canFeedRow = app.packageName in CW_SOURCES && app.packageName != cwSource()
+        val choices = listOfNotNull(
+            getString(R.string.use_for_cw).takeIf { canFeedRow },
+            getString(R.string.move),
+            getString(R.string.remove_from_row),
+        )
         AlertDialog.Builder(this, R.style.Theme_Cinema_Dialog)
             .setTitle(app.label)
-            .setItems(choices) { _, which ->
-                if (which == 0) {
-                    startMove(app)
-                } else {
-                    apps.remove(app.packageName)
-                    loadApps()
+            .setItems(choices.toTypedArray()) { _, which ->
+                when (choices[which]) {
+                    getString(R.string.use_for_cw) -> useForContinueWatching(app.packageName)
+                    getString(R.string.move) -> startMove(app)
+                    else -> {
+                        apps.remove(app.packageName)
+                        loadApps()
+                    }
                 }
             }
             .show()
+    }
+
+    private fun useForContinueWatching(pkg: String) {
+        prefs.cwSource = pkg
+        Toast.makeText(this, getString(R.string.cw_switched, sourceName(pkg)), Toast.LENGTH_SHORT).show()
+        showCards(listOf(action(CwCard.Kind.LOADING, R.string.loading, getString(R.string.loading_message))))
+        refreshContinueWatching()
     }
 
     // ---- moving an app ----
@@ -697,5 +765,7 @@ class HomeActivity : Activity() {
         const val GIVE_UP_MS = 60_000L
         const val ACTION_VIEW_INPUTS = "com.android.tv.action.VIEW_INPUTS"
         const val LIVE_TV_PACKAGE = "com.sony.dtv.tvx"
+        const val NETFLIX_PACKAGE = "com.netflix.ninja"
+        val CW_SOURCES = setOf(PlexClient.PLEX_PACKAGE, NETFLIX_PACKAGE) // apps that can feed Continue watching
     }
 }

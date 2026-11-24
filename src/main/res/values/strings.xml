@@ -3,7 +3,8 @@
     <string name="app_name">Cinema</string>
 
     <string name="continue_watching">Continue watching</string>
-    <string name="from_plex">· from Plex</string>
+    <string name="from_app">· from %1$s</string>
+    <string name="netflix">Netflix</string>
     <string name="apps">Apps</string>
     <string name="plex">Plex</string>
     <string name="inputs">Inputs</string>
@@ -16,7 +17,11 @@
     <string name="link_message">Show what you were watching on your Plex server</string>
     <string name="unreachable_title">Plex isn\'t reachable</string>
     <string name="nothing_title">Nothing in progress</string>
-    <string name="nothing_message">Start something in Plex and it shows up here</string>
+    <string name="nothing_message">Start something in %1$s and it shows up here</string>
+    <string name="grant_title">Cinema can\'t see %1$s yet</string>
+    <string name="grant_message">Allow \"read TV listings\" over adb (see the README), then come back</string>
+    <string name="use_for_cw">Use for Continue watching</string>
+    <string name="cw_switched">Continue watching now comes from %1$s</string>
 
     <string name="move">Move</string>
     <string name="move_hint">Move it with the arrows · OK to place it · Back to cancel</string>

@@ -40,12 +40,13 @@ private fun resetFocusLook(view: View, scale: Float) {
     view.translationZ = if (focused) view.resources.displayMetrics.density * 10f else 0f
 }
 
-/** A tile in the Continue watching row: a Plex item, or a single action (link, retry…). */
+/** A tile in the Continue watching row: an item (Plex or Netflix), or a single action (link, retry…). */
 sealed class CwCard {
     data class Item(val item: CwItem) : CwCard()
     data class Action(val kind: Kind, val title: String, val message: String) : CwCard()
 
-    enum class Kind { LOADING, LINK, RETRY, OPEN_PLEX }
+    /** OPEN_SOURCE opens the app the row comes from; GRANT explains the missing permission. */
+    enum class Kind { LOADING, LINK, RETRY, OPEN_SOURCE, GRANT }
 }
 
 class CwAdapter(
@@ -96,7 +97,7 @@ class CwAdapter(
             is CwCard.Item -> {
                 val item = card.item
                 holder.action.visibility = View.GONE
-                holder.badge.visibility = View.VISIBLE
+                holder.badge.visibility = if (item.badge.isBlank()) View.GONE else View.VISIBLE // Netflix gives none
                 holder.badge.text = item.badge
                 holder.progress.visibility = if (item.progress > 0f) View.VISIBLE else View.GONE
                 holder.progress.progress = (item.progress * 1000).roundToInt()

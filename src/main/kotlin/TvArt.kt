@@ -74,6 +74,89 @@ class TvArt(private val context: Context) {
         return art
     }
 
+    /**
+     * What you're watching in [pkg], as Continue watching cards; null without READ_TV_LISTINGS.
+     * Call from a background thread. Two places, as apps publish it for the TV home screen:
+     *
+     * - **Watch Next** items, newest first, with episode and progress (the Android TV standard).
+     * - Items in the app's own rows described as "Continue watching …". Netflix does this: on this
+     *   TV it publishes no Watch Next at all, but its one row starts with the titles you're
+     *   watching, without episode or progress, linking to the title in Netflix.
+     */
+    fun continueWatching(pkg: String): List<CwItem>? {
+        if (context.checkSelfPermission(READ_TV_LISTINGS) != PackageManager.PERMISSION_GRANTED) return null
+
+        class Entry(val item: CwItem, val engaged: Long, val id: Long)
+        val watchNext = ArrayList<Entry>()
+        val projection = arrayOf(
+            ID, PACKAGE, ENGAGED, PROGRAM_TYPE, TITLE, EPISODE_TITLE, SEASON, EPISODE,
+            POSITION, DURATION, INTENT_URI, BROWSABLE,
+        ) + IMAGE_COLUMNS
+        query(WATCH_NEXT, projection) { c ->
+            if (c.str(PACKAGE) != pkg || c.long(BROWSABLE) == 0L) return@query // 0: removed by the user
+            val id = c.long(ID) ?: return@query
+            val item = cardOf(c, pkg, "watchnext:$id") ?: return@query
+            watchNext += Entry(item, c.long(ENGAGED) ?: 0, id)
+        }
+
+        val inRows = ArrayList<Entry>()
+        query(PREVIEW_PROGRAMS, arrayOf(ID, PACKAGE, PROGRAM_TYPE, TITLE, EPISODE_TITLE, SEASON, EPISODE,
+            POSITION, DURATION, INTENT_URI, DESCRIPTION, CHANNEL_ID) + IMAGE_COLUMNS) { c ->
+            if (c.str(PACKAGE) != pkg) return@query
+            val description = c.str(DESCRIPTION)?.takeIf { it.startsWith(CONTINUE_PREFIX, ignoreCase = true) } ?: return@query
+            val id = c.long(ID) ?: return@query
+            var item = cardOf(c, pkg, "row:$id") ?: return@query
+            // "Continue watching <episode title>": Netflix names the episode you're on there.
+            val episode = description.drop(CONTINUE_PREFIX.length).trim()
+            if (item.subtitle.isBlank() && episode.isNotEmpty() && episode != item.title) item = item.copy(subtitle = episode)
+            inRows += Entry(item, 0, id)
+        }
+
+        val items = (watchNext.sortedWith(compareByDescending<Entry> { it.engaged }.thenByDescending { it.id }) +
+            inRows.sortedBy { it.id }) // the app's own order
+            .map { it.item }
+            .distinctBy { it.title + "\u0000" + it.subtitle }
+        // No titles, links or image URLs in the log.
+        Log.i(TAG, "Continue watching from $pkg: ${watchNext.size} Watch Next, ${inRows.size} from its rows; " +
+            items.joinToString { item ->
+                "[${item.badge.ifEmpty { "-" }} ${(item.progress * 100).toInt()}% link ${Uri.parse(item.deepLink).scheme} " +
+                    "img ${item.thumbUrl?.let(::hostOf) ?: "none"}${if (item.artUrl != null) " landscape" else ""}]"
+            })
+        return items
+    }
+
+    /** A Continue watching card from a Watch Next or row item of [pkg]; null without a title or link. */
+    private fun cardOf(c: Cursor, pkg: String, key: String): CwItem? {
+        val link = c.str(INTENT_URI) ?: return null
+        val show = c.str(TITLE)?.takeIf { it.isNotBlank() } ?: return null
+        val duration = c.long(DURATION) ?: 0
+        val position = c.long(POSITION) ?: 0
+        val season = c.str(SEASON)?.takeIf { it.isNotBlank() }
+        val episode = c.str(EPISODE)?.takeIf { it.isNotBlank() }
+        val episodeTitle = c.str(EPISODE_TITLE)?.takeIf { it.isNotBlank() }
+        val badge = when {
+            season != null && episode != null -> "S$season · E$episode"
+            episode != null -> "E$episode"
+            c.long(PROGRAM_TYPE) == TYPE_MOVIE && duration > 0 -> "Film"
+            else -> ""
+        }
+        val landscape = landscapeImage(c)
+        return CwItem(
+            ratingKey = key,
+            title = show,
+            badge = badge,
+            subtitle = listOf(badge, episodeTitle.orEmpty()).filter { it.isNotBlank() }.joinToString(" · "),
+            progress = if (duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f,
+            timeLeft = timeLeftText(duration, position),
+            thumbUrl = landscape ?: c.str(THUMB)?.takeIf(::usable) ?: c.str(POSTER)?.takeIf(::usable),
+            artUrl = landscape,
+            deepLink = link,
+            resumeSeconds = position / 1000,
+            app = pkg,
+        )
+    }
+
+
     /** The poster or thumbnail, whichever is landscape; one whose shape the app didn't say is checked once loaded. */
     private fun landscapeImage(c: Cursor): String? {
         val poster = c.str(POSTER)?.takeIf(::usable)
@@ -110,6 +193,7 @@ class TvArt(private val context: Context) {
     companion object {
         private const val TAG = "Cinema"
         private const val PER_APP = 3
+        private const val CONTINUE_PREFIX = "Continue watching" // Netflix's description of in-progress titles in its row
         const val READ_TV_LISTINGS = "android.permission.READ_TV_LISTINGS"
 
         private val WATCH_NEXT = Uri.parse("content://android.media.tv/watch_next_program")
@@ -124,6 +208,16 @@ class TvArt(private val context: Context) {
         private const val TYPE = "type"
         private const val TYPE_PREVIEW = "TYPE_PREVIEW"
         private const val BROWSABLE = "browsable"
+        private const val PROGRAM_TYPE = "type" // in program tables: TYPE_MOVIE = 0, TYPE_TV_EPISODE = 3…
+        private const val TYPE_MOVIE = 0L
+        private const val TITLE = "title"
+        private const val EPISODE_TITLE = "episode_title"
+        private const val SEASON = "season_display_number"
+        private const val EPISODE = "episode_display_number"
+        private const val POSITION = "last_playback_position_millis"
+        private const val DURATION = "duration_millis"
+        private const val INTENT_URI = "intent_uri"
+        private const val DESCRIPTION = "short_description"
         private const val POSTER = "poster_art_uri"
         private const val POSTER_RATIO = "poster_art_aspect_ratio"
         private const val THUMB = "thumbnail_uri"

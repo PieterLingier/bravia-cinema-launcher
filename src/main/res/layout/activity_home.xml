@@ -160,10 +160,10 @@
             android:textSize="14sp" />
 
         <TextView
+            android:id="@+id/cwSource"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="5dp"
-            android:text="@string/from_plex"
             android:textColor="@color/text_faint"
             android:textSize="14sp" />
     </LinearLayout>

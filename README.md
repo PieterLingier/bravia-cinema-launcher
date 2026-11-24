@@ -2,7 +2,7 @@
 
 A custom Android TV launcher for the BRAVIA 4K UR3 (Android TV 10), built from mockup A "Cinema":
 
-- **Continue watching** from your Plex server, with the focused show's artwork filling the screen
+- **Continue watching** from your Plex server (or from Netflix, if you pick it), with the focused show's artwork filling the screen
 - **Your media apps in two rows of seven** (more rows scroll down): Plex, Netflix, YouTube, Disney+, TV Vlaanderen, VTM GO, VRT MAX, Play, Telenet TV, DAZN, Apple TV, Red Bull TV, YouTube Music and Live TV.
   The focused app fills the screen with its own artwork: what you were last watching in it, or the top of the rows
   it publishes for the TV home screen. Plex shows what you'd resume. Apps that publish no artwork (YouTube, DAZN,
@@ -16,6 +16,7 @@ A custom Android TV launcher for the BRAVIA 4K UR3 (Android TV 10), built from m
 | OK on a Continue watching tile | Resumes it in Plex |
 | OK on an app | Opens the app |
 | Hold OK on an app | Move it, or remove it from the home screen |
+| Hold OK on Netflix or Plex | Also: **Use for Continue watching**, to fill that row from Netflix instead of Plex, or back (Plex is the default) |
 | Move | The app lifts (larger, orange ring); the arrows carry it through the grid, OK puts it down, Back cancels |
 | All apps (top right) | Every app; hold OK on one to add it to the row or remove it |
 | Home or Back | Back to the start of Continue watching |
@@ -34,7 +35,7 @@ Download the newest `cinema-launcher-<version>.apk` from the [Releases page](htt
 "Build" seven times) and USB or network debugging in Developer options, connect with `adb connect <TV-IP>:5555`, then:
 
 ```powershell
-adb install -r cinema-launcher-1.3.apk
+adb install -r cinema-launcher-1.4.apk
 ```
 
 A newer version installs the same way, over the old one; your Plex link and app order stay.
@@ -47,7 +48,8 @@ adb shell appops set local.cinema.launcher SYSTEM_ALERT_WINDOW allow
 ```
 
 Let Cinema read the artwork other apps publish for the TV home screen (their Watch Next items and rows), for the
-app backdrops. Android calls this "read TV listings"; without it, every app gets its banner backdrop instead:
+app backdrops and for Continue watching from Netflix. Android calls this "read TV listings"; without it, every app
+gets its banner backdrop instead:
 
 ```powershell
 adb shell pm grant local.cinema.launcher android.permission.READ_TV_LISTINGS
@@ -119,7 +121,7 @@ app in place: uninstall it first.
 | File | Role |
 |---|---|
 | `src/main/kotlin/HomeActivity.kt` | The home screen: hero, both rows, top bar, backdrop and app-colour glow |
-| `src/main/kotlin/TvArt.kt` | The artwork apps publish for the TV home screen, for their backdrops |
+| `src/main/kotlin/TvArt.kt` | What apps publish for the TV home screen: artwork for their backdrops, and Netflix's Watch Next for Continue watching |
 | `src/main/kotlin/BannerArt.kt` | The banner backdrop for apps that publish no artwork |
 | `src/main/kotlin/Plex.kt` | Plex sign-in (plex.tv/link code), server discovery, Continue watching, resized artwork |
 | `src/main/kotlin/Apps.kt` | Which apps are in the row and in what order; launching apps |
@@ -134,6 +136,13 @@ app in place: uninstall it first.
   and looks again when it stops answering.
 - **Continue watching:** `/hubs/continueWatching/items` on the server, falling back to older endpoints and finally
   `/library/onDeck`. It refreshes every time you come back to the home screen.
+- **Continue watching from Netflix:** Netflix has no public API, and on this TV it publishes no Android "Watch Next"
+  items either. But its row for the TV home screen starts with the titles you're watching, each described as
+  "Continue watching <episode>". With "read TV listings" Cinema shows those (and any Watch Next items, should Netflix
+  add them). OK sends Netflix's own link, which resumes the episode where you stopped. Netflix shares no episode
+  number or progress, so the tiles show Netflix's own artwork (with its progress bar) and the hero the episode name.
+  Without the permission the row says so. Netflix's line is in English; with Netflix in another language the row stays
+  empty.
 - **App backdrops:** apps keep publishing artwork for the TV home screen (Watch Next items and their rows, or
   "channels") to Android's TV provider, even with Google's home screen off. With "read TV listings" Cinema may read
   it. For the focused app it shows the newest Watch Next item, otherwise the top of the rows Google's home screen

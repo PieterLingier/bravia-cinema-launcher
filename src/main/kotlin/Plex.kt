@@ -26,8 +26,9 @@ data class CwItem(
     val timeLeft: String,  // "23 min left"
     val thumbUrl: String?, // 16:9 card image
     val artUrl: String?,   // full-screen backdrop
-    val deepLink: String,  // opens the item in the Plex app
+    val deepLink: String,  // opens the item in its app: a plex:// link, or the app's own intent URI
     val resumeSeconds: Long, // where the link asks Plex to start
+    val app: String = PlexClient.PLEX_PACKAGE, // the app the item comes from and opens in
 )
 
 sealed class CwState {
@@ -208,12 +209,7 @@ class PlexClient(private val prefs: Prefs) {
         val duration = m.optLong("duration", 0)
         val offset = m.optLong("viewOffset", 0)
         val progress = if (duration > 0) (offset.toFloat() / duration).coerceIn(0f, 1f) else 0f
-        val minutes = if (duration > 0) ceil((duration - offset).coerceAtLeast(0) / 60000.0).toInt() else 0
-        val timeLeft = when {
-            duration <= 0 -> ""
-            offset <= 0 -> formatMinutes(minutes)
-            else -> formatMinutes(minutes) + " left"
-        }
+        val timeLeft = timeLeftText(duration, offset)
 
         val title: String
         val badge: String
@@ -303,6 +299,13 @@ private fun JSONArray.objects(): List<JSONObject> = (0 until length()).mapNotNul
 private fun JSONObject.str(name: String): String? = if (isNull(name)) null else optString(name).takeIf { it.isNotBlank() }
 
 private fun enc(value: String): String = URLEncoder.encode(value, "UTF-8")
+
+/** "23 min left", or just the running time when not started; "" without a duration. */
+fun timeLeftText(durationMs: Long, offsetMs: Long): String {
+    if (durationMs <= 0) return ""
+    val minutes = ceil((durationMs - offsetMs).coerceAtLeast(0) / 60000.0).toInt()
+    return if (offsetMs <= 0) formatMinutes(minutes) else formatMinutes(minutes) + " left"
+}
 
 private fun formatMinutes(total: Int): String = when {
     total >= 60 && total % 60 == 0 -> "${total / 60} h"

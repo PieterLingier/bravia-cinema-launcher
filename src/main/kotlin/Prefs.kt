@@ -59,6 +59,13 @@ class Prefs(context: Context) {
             sp.edit().putStringSet(KEY_KNOWN, value).apply()
         }
 
+    /** The app the Continue watching row comes from (package name): Plex unless the user picked another. */
+    var cwSource: String
+        get() = sp.getString(KEY_CW_SOURCE, null) ?: PlexClient.PLEX_PACKAGE
+        set(value) {
+            sp.edit().putString(KEY_CW_SOURCE, value).apply()
+        }
+
     fun forgetPlex() {
         plexToken = null
         server = null
@@ -73,5 +80,6 @@ class Prefs(context: Context) {
         const val KEY_SERVER_TOKEN = "serverToken"
         const val KEY_ROW = "rowOrder"
         const val KEY_KNOWN = "knownPackages"
+        const val KEY_CW_SOURCE = "cwSource"
     }
 }
