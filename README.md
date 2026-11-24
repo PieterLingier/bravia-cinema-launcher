@@ -125,5 +125,6 @@ app in place: uninstall it first.
   it ignores them for a few seconds; extra links while it loads do no harm. All of this was measured on this TV.
   A 4K file whose audio the server converts takes about 15 s from OK to picture.
 
-Space Grotesk font: SIL Open Font License, see `licenses/SpaceGrotesk-OFL.txt`. The settings icon is adapted from
+Cinema is released under the MIT License, see `LICENSE`. Space Grotesk font: SIL Open Font License, see
+`licenses/SpaceGrotesk-OFL.txt`. The settings icon is adapted from
 Feather Icons (MIT).
