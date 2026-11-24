@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Plain HTTP is allowed so a Plex server on the home network still works when
+     its HTTPS (plex.direct) address can't be resolved; HTTPS is always tried first. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

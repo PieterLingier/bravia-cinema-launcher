@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Darkens the left side so the hero text stays readable over any artwork. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient
+        android:angle="0"
+        android:centerColor="#A308090C"
+        android:centerX="0.42"
+        android:endColor="#0F08090C"
+        android:startColor="#F508090C"
+        android:type="linear" />
+</shape>

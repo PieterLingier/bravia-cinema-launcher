@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Mockup A "Cinema", at 960x540 dp (the TV's 1920x1080 at density 2). -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/ground"
+    android:clipChildren="false"
+    android:clipToPadding="false">
+
+    <ImageView
+        android:id="@+id/backdrop"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:alpha="0"
+        android:importantForAccessibility="no"
+        android:scaleType="centerCrop" />
+
+    <View
+        android:id="@+id/glow"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:alpha="0" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/scrim_left" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="430dp"
+        android:layout_gravity="bottom"
+        android:background="@drawable/scrim_bottom" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="32dp"
+        android:layout_marginStart="48dp"
+        android:layout_marginTop="27dp"
+        android:layout_marginEnd="48dp"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextClock
+            android:id="@+id/date"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:format12Hour="EEEE d MMMM"
+            android:format24Hour="EEEE d MMMM"
+            android:textColor="@color/text_soft"
+            android:textSize="13sp" />
+
+        <TextClock
+            android:id="@+id/time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="7dp"
+            android:format12Hour="h:mm"
+            android:format24Hour="HH:mm"
+            android:textColor="@color/text"
+            android:textSize="18sp" />
+
+        <ImageButton
+            android:id="@+id/btnInputs"
+            style="@style/TopButton"
+            android:contentDescription="@string/inputs"
+            android:src="@drawable/ic_inputs" />
+
+        <ImageButton
+            android:id="@+id/btnAllApps"
+            style="@style/TopButton"
+            android:contentDescription="@string/all_apps"
+            android:src="@drawable/ic_apps" />
+
+        <ImageButton
+            android:id="@+id/btnSettings"
+            style="@style/TopButton"
+            android:contentDescription="@string/settings"
+            android:src="@drawable/ic_settings" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/hero"
+        android:layout_width="520dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="48dp"
+        android:layout_marginTop="66dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/heroTitle"
+            android:layout_width="match_parent"
+            android:layout_height="58dp"
+            android:autoSizeMaxTextSize="44sp"
+            android:autoSizeMinTextSize="26sp"
+            android:autoSizeTextType="uniform"
+            android:ellipsize="end"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:textColor="@color/text"
+            android:textSize="44sp" />
+
+        <TextView
+            android:id="@+id/heroMeta"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/text_soft"
+            android:textSize="16sp" />
+
+        <LinearLayout
+            android:id="@+id/heroProgressRow"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ProgressBar
+                android:id="@+id/heroProgress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="210dp"
+                android:layout_height="3dp"
+                android:max="1000"
+                android:maxHeight="3dp"
+                android:minHeight="3dp"
+                android:progressDrawable="@drawable/progress_hero" />
+
+            <TextView
+                android:id="@+id/heroLeft"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:textColor="#FFE6E9EE"
+                android:textSize="13sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="48dp"
+        android:layout_marginTop="192dp"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/cwLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="sans-serif-medium"
+            android:text="@string/continue_watching"
+            android:textColor="@color/text"
+            android:textSize="14sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="5dp"
+            android:text="@string/from_plex"
+            android:textColor="@color/text_faint"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <androidx.leanback.widget.HorizontalGridView
+        android:id="@+id/cwRow"
+        android:layout_width="match_parent"
+        android:layout_height="118dp"
+        android:layout_marginTop="214dp"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:paddingStart="48dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="48dp"
+        android:paddingBottom="8dp"
+        app:focusOutEnd="false"
+        app:focusOutFront="false" />
+
+    <TextView
+        android:id="@+id/appsLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="48dp"
+        android:layout_marginTop="340dp"
+        android:fontFamily="sans-serif-medium"
+        android:text="@string/apps"
+        android:textColor="@color/text_muted"
+        android:textSize="14sp" />
+
+    <!-- Two rows of 7 tiles (63 dp + 10 dp + 63 dp) that scroll down; the grid clips rows
+         scrolled out of view, but focused tiles may grow into its 8 dp padding. -->
+    <androidx.leanback.widget.VerticalGridView
+        android:id="@+id/appsGrid"
+        android:layout_width="match_parent"
+        android:layout_height="152dp"
+        android:layout_marginTop="362dp"
+        android:clipChildren="true"
+        android:clipToPadding="false"
+        android:paddingStart="48dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="48dp"
+        android:paddingBottom="8dp"
+        app:focusOutFront="true"
+        app:focusOutSideEnd="false"
+        app:focusOutSideStart="false" />
+</FrameLayout>
