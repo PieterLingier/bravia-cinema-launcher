@@ -60,15 +60,9 @@ class AppRepo(private val context: Context, private val prefs: Prefs) {
 
     fun rowPackages(): List<String> = homeRow(allApps(withImages = false)).map { it.packageName }
 
-    fun move(packageName: String, delta: Int) {
-        val row = rowPackages().toMutableList()
-        val from = row.indexOf(packageName)
-        if (from < 0) return
-        val to = (from + delta).coerceIn(0, row.lastIndex)
-        if (to == from) return
-        row.removeAt(from)
-        row.add(to, packageName)
-        prefs.rowOrder = row
+    /** Saves the home row in this order (after the user moved an app). */
+    fun setRow(packages: List<String>) {
+        prefs.rowOrder = packages
     }
 
     fun remove(packageName: String) {

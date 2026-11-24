@@ -15,7 +15,8 @@ A custom Android TV launcher for the BRAVIA 4K UR3 (Android TV 10), built from m
 |---|---|
 | OK on a Continue watching tile | Resumes it in Plex |
 | OK on an app | Opens the app |
-| Hold OK on an app | Move it one place left or right, or remove it from the home screen |
+| Hold OK on an app | Move it, or remove it from the home screen |
+| Move | The app lifts (larger, orange ring); the arrows carry it through the grid, OK puts it down, Back cancels |
 | All apps (top right) | Every app; hold OK on one to add it to the row or remove it |
 | Home or Back | Back to the start of Continue watching |
 | Google Play button on the remote | Opens Plex (once switched on, see below) |
@@ -28,13 +29,15 @@ Apps you install later join the row automatically, unless they're utilities (sto
 
 ## Install and make it the home screen
 
-Download `cinema-launcher-1.0.apk` from the [Releases page](https://github.com/PieterLingier/bravia-cinema-launcher/releases)
+Download the newest `cinema-launcher-<version>.apk` from the [Releases page](https://github.com/PieterLingier/bravia-cinema-launcher/releases)
 (or build it, see below). Switch on developer mode on the TV (Settings > Device Preferences > About, press OK on
 "Build" seven times) and USB or network debugging in Developer options, connect with `adb connect <TV-IP>:5555`, then:
 
 ```powershell
-adb install -r cinema-launcher-1.0.apk
+adb install -r cinema-launcher-1.1.apk
 ```
+
+A newer version installs the same way, over the old one; your Plex link and app order stay.
 
 Let Cinema send Plex the episode link while Plex is on screen. Android files this under "display over other apps",
 but Cinema never draws over other apps:

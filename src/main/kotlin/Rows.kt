@@ -133,12 +133,32 @@ class AppsAdapter(
         setHasStableIds(true)
     }
 
-    var apps: List<AppEntry> = emptyList()
+    private var items: List<AppEntry> = emptyList()
+
+    var apps: List<AppEntry>
+        get() = items
         set(value) {
-            val same = value.map { it.packageName } == field.map { it.packageName }
-            field = value
+            val same = value.map { it.packageName } == items.map { it.packageName }
+            items = value
             if (!same) notifyDataSetChanged()
         }
+
+    /** The app being moved (package name): drawn lifted, larger and with an accent ring. */
+    var lifted: String? = null
+        set(value) {
+            val old = field
+            field = value
+            for (pkg in listOf(old, value)) {
+                val index = items.indexOfFirst { it.packageName == pkg }
+                if (index >= 0) notifyItemChanged(index)
+            }
+        }
+
+    /** Moves one tile in place, so the tile (and its focus) travels with it. */
+    fun moveItem(from: Int, to: Int) {
+        items = items.toMutableList().apply { add(to, removeAt(from)) }
+        notifyItemMoved(from, to)
+    }
 
     class Holder(view: View) : RecyclerView.ViewHolder(view) {
         val banner: ImageView = view.findViewById(R.id.appBanner)
@@ -163,12 +183,15 @@ class AppsAdapter(
 
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val app = apps[position]
+        val isLifted = app.packageName == lifted
+        val scale = if (isLifted) LIFTED_SCALE else focusScale
         holder.itemView.contentDescription = app.label
+        holder.itemView.foreground = holder.itemView.context.getDrawable(if (isLifted) R.drawable.move_ring else R.drawable.focus_ring)
         holder.itemView.setOnFocusChangeListener { v, hasFocus ->
-            animateFocus(v, hasFocus, focusScale)
+            animateFocus(v, hasFocus, scale)
             if (hasFocus) onFocus(app)
         }
-        resetFocusLook(holder.itemView, focusScale)
+        resetFocusLook(holder.itemView, scale)
         holder.itemView.setOnClickListener { onClick(app) }
         holder.itemView.setOnLongClickListener {
             onLongClick(app)
@@ -184,5 +207,9 @@ class AppsAdapter(
             holder.icon.setImageDrawable(app.icon)
             holder.name.text = app.label
         }
+    }
+
+    private companion object {
+        const val LIFTED_SCALE = 1.2f
     }
 }

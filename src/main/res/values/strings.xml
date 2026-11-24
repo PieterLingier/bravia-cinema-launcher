@@ -18,8 +18,8 @@
     <string name="nothing_title">Nothing in progress</string>
     <string name="nothing_message">Start something in Plex and it shows up here</string>
 
-    <string name="move_left">Move left</string>
-    <string name="move_right">Move right</string>
+    <string name="move">Move</string>
+    <string name="move_hint">Move it with the arrows · OK to place it · Back to cancel</string>
     <string name="remove_from_row">Remove from the home row</string>
     <string name="add_to_row">Add to the home row</string>
     <string name="cant_open">Couldn\'t open %1$s</string>

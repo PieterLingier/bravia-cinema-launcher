@@ -16,6 +16,7 @@ import android.os.Bundle
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageButton
@@ -89,6 +90,9 @@ class HomeActivity : Activity() {
     private var backdropUrl: String? = null // the image the backdrop holds, shown or not
     private var backdropShown = false
     private val notLandscape = HashSet<String>()
+    private var moving: String? = null // package of the app being moved
+    private var okPressed = false
+    private var orderBeforeMove: List<AppEntry> = emptyList()
     private val bannerBackdrops = HashMap<String, Drawable>() // 1280x720 each; only apps without artwork use them
 
     private val packageChanges = object : BroadcastReceiver() {
@@ -181,11 +185,13 @@ class HomeActivity : Activity() {
 
     override fun onStop() {
         super.onStop()
+        endMove(keep = false) // screen off or another app in front mid-move: put the app back
         stopSignal?.complete(Unit) // another app (Plex) is now on screen
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        endMove(keep = false) // Home while moving an app: cancel the move
         // Home pressed while already on the home screen: back to the start of Continue watching.
         if (hasWindowFocus()) {
             cwRow.selectedPosition = 0
@@ -254,6 +260,7 @@ class HomeActivity : Activity() {
     }
 
     private fun loadApps(focus: String? = null) {
+        if (moving != null) return // reloaded when the move ends
         appsJob?.cancel()
         appsJob = scope.launch {
             val row = withContext(Dispatchers.IO) { apps.homeRow() }
@@ -298,7 +305,7 @@ class HomeActivity : Activity() {
 
     private fun showApp(app: AppEntry) {
         focusedApp = app
-        setHero(app.label, null, null, null)
+        setHero(app.label, if (app.packageName == moving) getString(R.string.move_hint) else null, null, null)
         showBackdrop(artFor(app), glowColor = accentOf(app))
         cwLabel.setTextColor(getColor(R.color.text_muted))
         appsLabel.setTextColor(getColor(R.color.text))
@@ -565,18 +572,95 @@ class HomeActivity : Activity() {
     }
 
     private fun editApp(app: AppEntry) {
-        val choices = arrayOf(getString(R.string.move_left), getString(R.string.move_right), getString(R.string.remove_from_row))
+        val choices = arrayOf(getString(R.string.move), getString(R.string.remove_from_row))
         AlertDialog.Builder(this, R.style.Theme_Cinema_Dialog)
             .setTitle(app.label)
             .setItems(choices) { _, which ->
-                when (which) {
-                    0 -> apps.move(app.packageName, -1)
-                    1 -> apps.move(app.packageName, 1)
-                    else -> apps.remove(app.packageName)
+                if (which == 0) {
+                    startMove(app)
+                } else {
+                    apps.remove(app.packageName)
+                    loadApps()
                 }
-                loadApps(focus = if (which == 2) null else app.packageName)
             }
             .show()
+    }
+
+    // ---- moving an app ----
+
+    /** Lifts [app]: the arrows carry it through the grid, OK puts it down there, Back cancels. */
+    private fun startMove(app: AppEntry) {
+        appsJob?.cancel() // a reload mustn't reorder the row under the user
+        moving = app.packageName
+        okPressed = false
+        orderBeforeMove = appsAdapter.apps
+        appsAdapter.lifted = app.packageName
+        focusLifted(appsAdapter.apps.indexOfFirst { it.packageName == app.packageName })
+        showApp(app)
+    }
+
+    /** Keeps focus on the lifted tile (after the menu closes, focus could land elsewhere). */
+    private fun focusLifted(index: Int) {
+        if (index < 0) return
+        appsGrid.selectedPosition = index
+        if (!appsGrid.hasFocus()) appsGrid.requestFocus()
+    }
+
+    private fun endMove(keep: Boolean) {
+        val pkg = moving ?: return
+        moving = null
+        appsAdapter.lifted = null
+        if (keep) {
+            apps.setRow(appsAdapter.apps.map { it.packageName })
+        } else {
+            appsAdapter.apps = orderBeforeMove
+        }
+        appsAdapter.apps.firstOrNull { it.packageName == pkg }?.let(::showApp) // drops the hint
+        loadApps(focus = pkg)
+    }
+
+    /** One step of the lifted app: Left/Right one place (wrapping across rows), Up/Down one row. */
+    private fun stepMove(pkg: String, keyCode: Int) {
+        val from = appsAdapter.apps.indexOfFirst { it.packageName == pkg }
+        if (from < 0) return
+        val last = appsAdapter.itemCount - 1
+        val to = when (keyCode) {
+            KeyEvent.KEYCODE_DPAD_LEFT -> from - 1
+            KeyEvent.KEYCODE_DPAD_RIGHT -> from + 1
+            KeyEvent.KEYCODE_DPAD_UP -> from - APP_COLUMNS
+            // Down from a row above a shorter last row: to the end of the row.
+            KeyEvent.KEYCODE_DPAD_DOWN ->
+                if (from + APP_COLUMNS <= last) from + APP_COLUMNS
+                else if (from / APP_COLUMNS < last / APP_COLUMNS) last
+                else from
+            else -> from
+        }
+        if (to !in 0..last || to == from) {
+            focusLifted(from)
+            return
+        }
+        appsAdapter.moveItem(from, to)
+        focusLifted(to)
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val pkg = moving ?: return super.dispatchKeyEvent(event)
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
+            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
+                if (event.action == KeyEvent.ACTION_DOWN) stepMove(pkg, event.keyCode)
+            }
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_BUTTON_A -> {
+                // Place on release, and only for a press that started in move mode (not the
+                // release of the OK that picked "Move" in the menu).
+                if (event.action == KeyEvent.ACTION_DOWN) okPressed = true
+                else if (event.action == KeyEvent.ACTION_UP && okPressed) endMove(keep = true)
+            }
+            KeyEvent.KEYCODE_BACK -> if (event.action == KeyEvent.ACTION_UP) endMove(keep = false)
+            else -> return super.dispatchKeyEvent(event) // volume, media keys…
+        }
+        return true
     }
 
     private companion object {
