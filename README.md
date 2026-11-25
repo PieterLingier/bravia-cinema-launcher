@@ -37,7 +37,7 @@ Download the newest `cinema-launcher-<version>.apk` from the [Releases page](htt
 "Build" seven times) and USB or network debugging in Developer options, connect with `adb connect <TV-IP>:5555`, then:
 
 ```powershell
-adb install -r cinema-launcher-1.7.apk
+adb install -r cinema-launcher-1.8.apk
 ```
 
 A newer version installs the same way, over the old one; your Plex link and app order stay.
@@ -98,7 +98,8 @@ service (above). While another app is the default home screen, the service:
 - **opens Cinema at start-up**: when the TV starts or wakes from standby, Android shows its own home screen
   without any button press. For the first minute after that, until you press a button on the remote, the service
   replaces it by Cinema as soon as it appears. After your first button press it stops, so whatever you open on
-  purpose (such as Google TV's settings panel) stays. Google's home screen may show for a moment first. The service
+  purpose (such as Google TV's settings panel) stays. Google's home screen may show for a moment first (longer
+  after a cold start, while Android starts Cinema's service). The service
   only notices which app a window belongs to.
 
 When Cinema is the home screen itself, as after the `pm disable-user` step, the service leaves both alone.

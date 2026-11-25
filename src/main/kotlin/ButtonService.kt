@@ -32,8 +32,8 @@ import android.view.accessibility.AccessibilityEvent
  * **Start-up → Cinema, again only while Cinema isn't the home app.** When the TV starts or wakes
  * from standby, Android opens its default home screen without any key press, so the Home rule above
  * never sees it. For a short while after start-up or waking ([STARTUP_MS], ended early by the first
- * key press), whenever the default home screen's window shows up, the service opens Cinema in its
- * place. The key press ends it so that whatever the viewer opens on purpose afterwards is left alone
+ * key press), whenever the default home screen's window shows up (or showed up a moment before), the
+ * service opens Cinema in its place. The key press ends it so that whatever the viewer opens on purpose afterwards is left alone
  * (Google TV's settings panel lives in its home app). Only the package of those events is used.
  */
 class ButtonService : AccessibilityService() {
@@ -43,6 +43,13 @@ class ButtonService : AccessibilityService() {
 
     /** When Cinema was last opened for that, so a burst of home-screen events opens it once. */
     private var openedAt = 0L
+
+    /**
+     * When (SystemClock.elapsedRealtime, which keeps counting in standby) another home screen last
+     * sent an event, start-up or not. On waking, Google's home screen often reports before the
+     * screen-on broadcast arrives; without this, Cinema would wait for its next event (seconds).
+     */
+    private var homeSeenAt = 0L
 
     /** The packages of the other home screens, whose windows trigger the start-up switch. */
     private var homePackages = emptySet<String>()
@@ -122,7 +129,19 @@ class ButtonService : AccessibilityService() {
     private fun startStartup(why: String) {
         if (cinemaIsHome()) return
         startupUntil = SystemClock.uptimeMillis() + STARTUP_MS
+        val sinceHome = SystemClock.elapsedRealtime() - homeSeenAt
         Log.i(TAG, "start-up ($why): the default home screen opens Cinema for ${STARTUP_MS / 1000} s")
+        // The home screen already showed up just before this: don't wait for its next event.
+        if (homeSeenAt != 0L && sinceHome < RECENT_MS) replaceHome("it showed up ${sinceHome} ms before")
+    }
+
+    /** During start-up: the default home screen is (or was just) in front, so open Cinema instead. */
+    private fun replaceHome(why: String) {
+        val now = SystemClock.uptimeMillis()
+        if (HomeActivity.inFront || now - openedAt <= REOPEN_MS) return
+        openedAt = now
+        Log.i(TAG, "start-up: the default home screen showed up ($why), opening Cinema")
+        openCinema()
     }
 
     /** The other home screens: Android's current default, plus Google's two (in case it resolves to a chooser). */
@@ -185,15 +204,10 @@ class ButtonService : AccessibilityService() {
         val pkg = event.packageName?.toString()
         if (pkg == PlexClient.PLEX_PACKAGE) {
             PlexWatch.onEvent(event.eventType, event.className?.toString())
-        } else if (pkg in homePackages && startupUntil != 0L) {
-            val now = SystemClock.uptimeMillis()
-            if (now > startupUntil) {
-                startupUntil = 0L
-            } else if (!HomeActivity.inFront && now - openedAt > REOPEN_MS) {
-                openedAt = now
-                Log.i(TAG, "start-up: the default home screen showed up, opening Cinema")
-                openCinema()
-            }
+        } else if (pkg in homePackages) {
+            homeSeenAt = SystemClock.elapsedRealtime()
+            if (startupUntil == 0L) return
+            if (SystemClock.uptimeMillis() > startupUntil) startupUntil = 0L else replaceHome("event")
         }
     }
 
@@ -204,6 +218,7 @@ class ButtonService : AccessibilityService() {
         const val STARTUP_MS = 60_000L // how long after start-up or waking the home screen is replaced
         const val BOOT_MS = 5 * 60_000L // service connected this soon after boot: that's start-up
         const val REOPEN_MS = 1_500L // at most one Cinema launch per burst of home-screen events
+        const val RECENT_MS = 5_000L // home screen seen this soon before waking: it's the one in front
 
         /** Google TV's home screen, and the older Android TV one. */
         val GOOGLE_HOMES = setOf("com.google.android.apps.tv.launcherx", "com.google.android.tvlauncher")
