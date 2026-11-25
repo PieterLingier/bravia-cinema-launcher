@@ -33,6 +33,19 @@
     <string name="add_to_row">Add to the home row</string>
     <string name="cant_open">Couldn\'t open %1$s</string>
 
+    <string name="assign_button">Assign a remote button</string>
+    <string name="remove_button">Remove the button \u201c%1$s\u201d</string>
+    <string name="assign_title">Choose a button for %1$s</string>
+    <string name="assign_message">Press the button on the remote that should open it. The arrows, OK, Back, Home, volume and power keep their own job.</string>
+    <string name="button_assigned">\u201c%1$s\u201d now opens %2$s</string>
+    <string name="button_moved">\u201c%1$s\u201d now opens %2$s instead of %3$s</string>
+    <string name="button_removed">\u201c%1$s\u201d no longer opens %2$s</string>
+    <string name="service_off_title">Switch on Cinema\'s button service first</string>
+    <string name="service_off_message">Settings > Device Preferences > Accessibility > Cinema: remote buttons. Only that service sees the remote\'s buttons before the TV does.</string>
+    <string name="key_number">Key %1$d</string>
+    <string name="key_scan_code">Scan code %1$d</string>
+    <string name="key_google_play">%1$s (Google Play)</string>
+
     <string name="link_heading">Link your Plex account</string>
     <string name="link_step1">On your phone or computer, go to</string>
     <string name="link_url">plex.tv/link</string>
@@ -48,6 +61,6 @@
 
     <string name="all_apps_hint">Hold OK on an app to add it to the home row or remove it</string>
 
-    <string name="button_service_label">Cinema: Google Play button opens Plex</string>
-    <string name="button_service_description">Makes the Google Play button on the remote open Plex. If another app is the default home screen, it also makes Home open Cinema, and opens Cinema in its place when the TV starts or wakes up. Android passes this service the remote\'s key presses; it acts only on those two buttons and passes every other key on unchanged. To resume Plex items without errors, it also notices when Plex has finished loading, from the type of Plex\'s window events only. For that start-up switch it notices only which app a window belongs to. It doesn\'t read the screen.</string>
+    <string name="button_service_label">Cinema: remote buttons</string>
+    <string name="button_service_description">Makes the remote buttons you assign in Cinema (hold OK on an app) open their app; until you change it, the Google Play button opens Plex. If another app is the default home screen, it also makes Home open Cinema, and opens Cinema in its place when the TV starts or wakes up. Android passes this service the remote\'s key presses; it acts only on those buttons and passes every other key on unchanged. To resume Plex items without errors, it also notices when Plex has finished loading, from the type of Plex\'s window events only. For that start-up switch it notices only which app a window belongs to. It doesn\'t read the screen.</string>
 </resources>

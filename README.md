@@ -15,13 +15,14 @@ A custom Android TV launcher for the BRAVIA 4K UR3 (Android TV 10), built from m
 |---|---|
 | OK on a Continue watching tile | Resumes it in Plex |
 | OK on an app | Opens the app |
-| Hold OK on an app | Move it, or remove it from the home screen |
+| Hold OK on an app | Move it, remove it from the home screen, or **Assign a remote button** to it (see below) |
 | Hold OK on Netflix or Plex | Also: **Use for Continue watching**, to fill that row from Netflix instead of Plex, or back (Plex is the default) |
 | | Or **Add a second Continue watching row**: Plex and Netflix each get a row (slightly smaller tiles), and the apps move into one row that scrolls sideways. **Remove its Continue watching row** goes back to one; **Show its row on top** swaps them |
 | Move | The app lifts (larger, orange ring); the arrows carry it through the grid, OK puts it down, Back cancels |
 | All apps (top right) | Every app; hold OK on one to add it to the row or remove it |
 | Home or Back | Back to the start of Continue watching |
-| Google Play button on the remote | Opens Plex (once switched on, see below) |
+| Google Play button on the remote | Opens Plex, until you assign it to another app (once switched on, see below) |
+| A button you assigned | Opens its app |
 
 The first time, the Continue watching row shows **Link Plex**. Press OK and enter the 4-character code at
 **plex.tv/link** on your phone or computer. The TV never sees your Plex password; the token it gets back
@@ -36,7 +37,7 @@ Download the newest `cinema-launcher-<version>.apk` from the [Releases page](htt
 "Build" seven times) and USB or network debugging in Developer options, connect with `adb connect <TV-IP>:5555`, then:
 
 ```powershell
-adb install -r cinema-launcher-1.6.apk
+adb install -r cinema-launcher-1.7.apk
 ```
 
 A newer version installs the same way, over the old one; your Plex link and app order stay.
@@ -66,17 +67,26 @@ adb shell pm disable-user --user 0 com.google.android.tvlauncher
 Google's home screen stays installed. Without it you lose its Home/Shop/Apps tabs, its sponsored and recommendation
 rows and its notification panel; voice search, the Assistant, Sony's settings and every app keep working.
 
-## Google Play button opens Plex
+## Remote buttons that open an app
 
-On this BRAVIA the remote's Google Play button sends key code 195 (`KEYCODE_BUTTON_8`), which Sony's vendor service
-turns into "open Google TV". Cinema's accessibility service takes that one key before Sony's handler sees it and
-opens Plex instead; every other key passes through unchanged, and it reads nothing from the screen. It also notices
-when Plex has finished loading (from the type of Plex's window events only), so a resume link goes out as soon as
-Plex can take it.
+Cinema's accessibility service sees the remote's buttons before the TV's own software does, so a button can open an
+app of your choice instead of what it did before:
 
-Switch it on with the remote: **Settings > Device Preferences > Accessibility > Cinema: Google Play button opens Plex**,
-then confirm Android's warning. Switch it off there to get the original behaviour back. To remap a different button,
-change `REMAPPED_KEY` in `ButtonService.kt`.
+- **Assign one:** hold OK on an app in the home row, pick **Assign a remote button**, and press the button. Any button
+  works except the arrows, OK, Back, Home, volume and power, which keep their own job. A button opens one app; assigning
+  it again moves it to the new app. An app can have several buttons.
+- **Take one back:** hold OK on the app and pick **Remove the button "…"**. The button then does what it did before.
+- **Out of the box,** the Google Play button opens Plex. On this BRAVIA it sends key code 195 (`KEYCODE_BUTTON_8`),
+  which Sony's software turns into "open Google TV".
+
+Some buttons may never reach the service, if the TV handles them before Android passes keys on. Then pressing it while
+Cinema asks for a button does nothing.
+
+Every other key passes through unchanged, and the service reads nothing from the screen. It also notices when Plex has
+finished loading (from the type of Plex's window events only), so a resume link goes out as soon as Plex can take it.
+
+Switch it on with the remote: **Settings > Device Preferences > Accessibility > Cinema: remote buttons**, then confirm
+Android's warning. Switch it off there to get the original behaviour back.
 
 ## Keeping Google's home screen (Google TV)
 
@@ -94,7 +104,8 @@ service (above). While another app is the default home screen, the service:
 When Cinema is the home screen itself, as after the `pm disable-user` step, the service leaves both alone.
 
 Holding Home then no longer reaches Google's home screen. Untested on Google TV so far, including the start-up switch; the rest of Cinema should
-work there, but Inputs needs a TV with inputs, and the Google Play button may not exist on that remote. On
+work there, but Inputs needs a TV with inputs, and the Google Play button may not exist on that remote (assign another button
+instead). On
 Android 13 and newer the accessibility switch can be greyed out for apps installed outside the Play Store: allow it
 under the app's info ("Allow restricted settings"), or switch it on over adb (this replaces the list of enabled
 accessibility services, so only use it when no others are on):
@@ -137,7 +148,8 @@ app in place: uninstall it first.
 | `src/main/kotlin/Rows.kt` | The tiles of both rows and the focus zoom |
 | `src/main/kotlin/PlexLinkActivity.kt` | The "enter this code at plex.tv/link" screen |
 | `src/main/kotlin/AllAppsActivity.kt` | The All apps grid |
-| `src/main/kotlin/ButtonService.kt` | Google Play button → Plex, and Home → Cinema when it isn't the home app (accessibility key filter) |
+| `src/main/kotlin/ButtonService.kt` | Assigned remote buttons → their app, and Home → Cinema when it isn't the home app (accessibility key filter) |
+| `src/main/kotlin/RemoteButtons.kt` | Which buttons can be assigned, the default (Google Play → Plex), and button names |
 | `src/main/kotlin/PlexWatch.kt` | Tells when Plex is ready for a resume link, from Plex's accessibility events |
 
 - **Finding the server:** the launcher asks plex.tv for your servers and uses the first address that answers from

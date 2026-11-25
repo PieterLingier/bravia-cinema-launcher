@@ -7,6 +7,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.Animatable
 import android.graphics.drawable.Drawable
@@ -108,6 +109,7 @@ class HomeActivity : Activity() {
     private var moving: String? = null // package of the app being moved
     private var okPressed = false
     private var orderBeforeMove: List<AppEntry> = emptyList()
+    private var buttonPrompt: AlertDialog? = null // "press the button for this app", while open
     private val bannerBackdrops = HashMap<String, Drawable>() // 1280x720 each; only apps without artwork use them
 
     private val packageChanges = object : BroadcastReceiver() {
@@ -223,6 +225,7 @@ class HomeActivity : Activity() {
     override fun onStop() {
         super.onStop()
         inFront = false
+        buttonPrompt?.dismiss() // another app in front: stop waiting for a button
         endMove(keep = false) // screen off or another app in front mid-move: put the app back
         stopSignal?.complete(Unit) // another app (Plex) is now on screen
     }
@@ -764,13 +767,19 @@ class HomeActivity : Activity() {
             )
             else -> emptyList() // the only row: switch from the other app
         }
+        // Remote buttons that open this app: assign one, or take one back.
+        val buttonChoices: List<Pair<String, () -> Unit>> =
+            listOf(getString(R.string.assign_button) to { askForButton(app) }) +
+                prefs.buttonApps.filterValues { it == pkg }.keys.sorted().map { key ->
+                    getString(R.string.remove_button, RemoteButtons.name(this, key)) to { removeButton(key, app) }
+                }
         val choices: List<Pair<String, () -> Unit>> = rowChoices + listOf(
             getString(R.string.move) to { startMove(app) },
             getString(R.string.remove_from_row) to {
                 apps.remove(pkg)
                 loadApps()
             },
-        )
+        ) + buttonChoices
         AlertDialog.Builder(this, R.style.Theme_Cinema_Dialog)
             .setTitle(app.label)
             .setItems(choices.map { it.first }.toTypedArray()) { _, which -> choices[which].second() }
@@ -792,6 +801,60 @@ class HomeActivity : Activity() {
         val loading = listOf(action(CwCard.Kind.LOADING, R.string.loading, getString(R.string.loading_message)))
         sources.forEachIndexed { row, source -> if (before.getOrNull(row) != source) showCards(row, loading) }
         loadApps(focus = focus) // the apps may have moved between the grid and the single row
+    }
+
+    // ---- remote buttons ----
+
+    /** Waits for the remote button that should open [app]; Cancel or Back stops waiting. */
+    private fun askForButton(app: AppEntry) {
+        if (!PlexWatch.connected) {
+            // Only Cinema's accessibility service sees buttons before the TV's own software does.
+            AlertDialog.Builder(this, R.style.Theme_Cinema_Dialog)
+                .setTitle(R.string.service_off_title)
+                .setMessage(R.string.service_off_message)
+                .setPositiveButton(android.R.string.ok, null)
+                .show()
+            return
+        }
+        val prompt = AlertDialog.Builder(this, R.style.Theme_Cinema_Dialog)
+            .setTitle(getString(R.string.assign_title, app.label))
+            .setMessage(R.string.assign_message)
+            .setNegativeButton(R.string.cancel, null)
+            .create()
+        prompt.setOnDismissListener {
+            RemoteButtons.learner = null
+            if (buttonPrompt === prompt) buttonPrompt = null
+        }
+        RemoteButtons.learner = { key ->
+            prompt.dismiss()
+            assignButton(key, app)
+        }
+        buttonPrompt = prompt
+        prompt.show()
+    }
+
+    private fun assignButton(key: Int, app: AppEntry) {
+        val buttons = prefs.buttonApps
+        val before = buttons[key]
+        prefs.buttonApps = buttons + (key to app.packageName)
+        val name = RemoteButtons.name(this, key)
+        val message = if (before != null && before != app.packageName) {
+            getString(R.string.button_moved, name, app.label, labelOf(before))
+        } else {
+            getString(R.string.button_assigned, name, app.label)
+        }
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
+    private fun removeButton(key: Int, app: AppEntry) {
+        prefs.buttonApps = prefs.buttonApps - key
+        Toast.makeText(this, getString(R.string.button_removed, RemoteButtons.name(this, key), app.label), Toast.LENGTH_SHORT).show()
+    }
+
+    private fun labelOf(pkg: String): String = try {
+        packageManager.getApplicationInfo(pkg, 0).loadLabel(packageManager).toString()
+    } catch (e: PackageManager.NameNotFoundException) {
+        pkg
     }
 
     // ---- moving an app ----

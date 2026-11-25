@@ -6,18 +6,22 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
-import androidx.core.content.ContextCompat
 import android.view.KeyEvent
+import androidx.core.content.ContextCompat
 import android.view.accessibility.AccessibilityEvent
 
 /**
- * Two remote buttons, while this service is switched on:
+ * Remote buttons, while this service is switched on:
  *
- * - **Google Play button → Plex.** On this BRAVIA that button sends KEYCODE_BUTTON_8 (195), which
- *   Sony's vendor service turns into "open Google TV". Key filtering in an accessibility service runs
- *   before that handler, so taking the key here keeps Google TV closed.
+ * - **Assigned buttons → their app** ([RemoteButtons], set up in Cinema by holding OK on an app).
+ *   Until changed, the Google Play button opens Plex: on this BRAVIA it sends KEYCODE_BUTTON_8 (195),
+ *   which Sony's vendor service turns into "open Google TV". Key filtering in an accessibility
+ *   service runs before that handler, so taking the key here keeps Google TV closed. While Cinema
+ *   waits for a button to assign, the next one that isn't [RemoteButtons.RESERVED] goes to Cinema.
  * - **Home → Cinema, only while Cinema isn't Android's home app.** That's for TVs where Google's
  *   home screen stays switched on (on Google TV it also runs the settings panel), so Android would
  *   send Home there. When Cinema *is* the home app, Home is left to Android, unchanged.
@@ -43,6 +47,12 @@ class ButtonService : AccessibilityService() {
     /** The packages of the other home screens, whose windows trigger the start-up switch. */
     private var homePackages = emptySet<String>()
 
+    private val prefs by lazy { Prefs(this) }
+    private val main = Handler(Looper.getMainLooper())
+
+    /** A button just taken for assigning: its repeats and key-up are swallowed too. */
+    private var learntKey = 0
+
     private val screenOn = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) = startStartup("screen on")
     }
@@ -52,14 +62,28 @@ class ButtonService : AccessibilityService() {
         if (startupUntil != 0L && event.action == KeyEvent.ACTION_DOWN && event.keyCode !in WAKE_KEYS) {
             startupUntil = 0L
         }
-        return handleKey(event)
+        return learn(event) ?: handleKey(event)
+    }
+
+    /** While Cinema waits for a button to assign: takes it (true), or null when not learning. */
+    private fun learn(event: KeyEvent): Boolean? {
+        val button = RemoteButtons.id(event)
+        if (learntKey != 0 && button == learntKey) {
+            if (event.action == KeyEvent.ACTION_UP) learntKey = 0
+            return true
+        }
+        val learner = RemoteButtons.learner ?: return null
+        if (button == 0) return null // a reserved key (e.g. Back closes Cinema's prompt), or unidentifiable
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            RemoteButtons.learner = null
+            learntKey = button
+            Log.i(TAG, "learnt button $button")
+            main.post { learner(button) }
+        }
+        return true
     }
 
     private fun handleKey(event: KeyEvent): Boolean = when (event.keyCode) {
-        REMAPPED_KEY -> {
-            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) openPlex()
-            true // consume down, repeats and up, so the original action never runs
-        }
         KeyEvent.KEYCODE_HOME -> {
             if (cinemaIsHome()) {
                 false // Android's own Home handling already opens Cinema
@@ -68,7 +92,23 @@ class ButtonService : AccessibilityService() {
                 true
             }
         }
-        else -> false
+        in RemoteButtons.RESERVED -> false
+        else -> {
+            val button = RemoteButtons.id(event)
+            val app = prefs.buttonApps[button].takeIf { button != 0 }
+            val intent = app?.let(::launchIntent)
+            if (intent != null && event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                try {
+                    startActivity(intent)
+                    Log.i(TAG, "button $button: opened $app")
+                } catch (e: Exception) {
+                    Log.w(TAG, "couldn't open $app: $e")
+                }
+            }
+            // An assigned button: consume down, repeats and up, so its original action never runs.
+            // If its app is gone, the button does what it did before.
+            intent != null
+        }
     }
 
     /** Whether Android sends Home to Cinema by itself (Cinema is the default home app). */
@@ -104,21 +144,9 @@ class ButtonService : AccessibilityService() {
         }
     }
 
-    private fun openPlex() {
-        val intent = packageManager.getLeanbackLaunchIntentForPackage(PlexClient.PLEX_PACKAGE)
-            ?: packageManager.getLaunchIntentForPackage(PlexClient.PLEX_PACKAGE)
-        if (intent == null) {
-            Log.w(TAG, "Plex isn't installed")
-            return
-        }
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-        try {
-            startActivity(intent)
-            Log.i(TAG, "Google Play button: opened Plex")
-        } catch (e: Exception) {
-            Log.w(TAG, "couldn't open Plex: $e")
-        }
-    }
+    private fun launchIntent(app: String): Intent? =
+        (packageManager.getLeanbackLaunchIntentForPackage(app) ?: packageManager.getLaunchIntentForPackage(app))
+            ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
 
     override fun onServiceConnected() {
         homePackages = otherHomePackages()
@@ -173,7 +201,6 @@ class ButtonService : AccessibilityService() {
 
     private companion object {
         const val TAG = "CinemaButton"
-        const val REMAPPED_KEY = KeyEvent.KEYCODE_BUTTON_8 // the remote's Google Play button
         const val STARTUP_MS = 60_000L // how long after start-up or waking the home screen is replaced
         const val BOOT_MS = 5 * 60_000L // service connected this soon after boot: that's start-up
         const val REOPEN_MS = 1_500L // at most one Cinema launch per burst of home-screen events

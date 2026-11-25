@@ -3,7 +3,7 @@ package local.cinema.launcher
 import android.content.Context
 import java.util.UUID
 
-/** The launcher's private settings: Plex link, last working server, home-row order. */
+/** The launcher's private settings: Plex link, last working server, home-row order, remote buttons. */
 class Prefs(context: Context) {
     private val sp = context.getSharedPreferences("cinema", Context.MODE_PRIVATE)
 
@@ -70,6 +70,18 @@ class Prefs(context: Context) {
             sp.edit().putString(KEY_CW_SOURCES, value.joinToString("\n")).remove(KEY_CW_SOURCE).apply()
         }
 
+    /** Remote buttons that open an app ([RemoteButtons.id] → package); [RemoteButtons.DEFAULT] until changed. */
+    var buttonApps: Map<Int, String>
+        get() = sp.getString(KEY_BUTTONS, null)?.let { stored ->
+            stored.split('\n').mapNotNull { line ->
+                val (code, pkg) = line.split('=', limit = 2).takeIf { it.size == 2 } ?: return@mapNotNull null
+                code.toIntOrNull()?.takeIf { it != 0 }?.let { it to pkg }
+            }.toMap()
+        } ?: RemoteButtons.DEFAULT
+        set(value) {
+            sp.edit().putString(KEY_BUTTONS, value.entries.joinToString("\n") { "${it.key}=${it.value}" }).apply()
+        }
+
     fun forgetPlex() {
         plexToken = null
         server = null
@@ -86,5 +98,6 @@ class Prefs(context: Context) {
         const val KEY_KNOWN = "knownPackages"
         const val KEY_CW_SOURCE = "cwSource"
         const val KEY_CW_SOURCES = "cwSources"
+        const val KEY_BUTTONS = "buttonApps"
     }
 }
