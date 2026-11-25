@@ -68,14 +68,28 @@ class HomeActivity : Activity() {
     private lateinit var heroProgressRow: View
     private lateinit var heroProgress: ProgressBar
     private lateinit var heroLeft: TextView
+    private lateinit var cwHeader: View
     private lateinit var cwLabel: TextView
     private lateinit var cwSourceLabel: TextView
+    private lateinit var cwHeader2: View
+    private lateinit var cwLabel2: TextView
+    private lateinit var cwSourceLabel2: TextView
     private lateinit var appsLabel: TextView
     private lateinit var cwRow: HorizontalGridView
-    private lateinit var appsGrid: VerticalGridView
+    private lateinit var cwRow2: HorizontalGridView
+    private lateinit var appsGrid: VerticalGridView // one Continue watching row: apps in rows of seven
+    private lateinit var appsRow: HorizontalGridView // two Continue watching rows: one row of apps
 
     private lateinit var cwAdapter: CwAdapter
+    private lateinit var cw2Adapter: CwAdapter
     private lateinit var appsAdapter: AppsAdapter
+
+    /** Two Continue watching rows on screen (and the apps in one row). */
+    private var twoRows = false
+
+    /** Whichever of appsGrid and appsRow is showing the apps. */
+    private val appsView: BaseGridView
+        get() = if (twoRows) appsRow else appsGrid
 
     private var cwJob: Job? = null
     private var appsJob: Job? = null
@@ -117,11 +131,17 @@ class HomeActivity : Activity() {
         heroProgressRow = findViewById(R.id.heroProgressRow)
         heroProgress = findViewById(R.id.heroProgress)
         heroLeft = findViewById(R.id.heroLeft)
+        cwHeader = findViewById(R.id.cwHeader)
         cwLabel = findViewById(R.id.cwLabel)
         cwSourceLabel = findViewById(R.id.cwSource)
+        cwHeader2 = findViewById(R.id.cwHeader2)
+        cwLabel2 = findViewById(R.id.cwLabel2)
+        cwSourceLabel2 = findViewById(R.id.cwSource2)
         appsLabel = findViewById(R.id.appsLabel)
         cwRow = findViewById(R.id.cwRow)
+        cwRow2 = findViewById(R.id.cwRow2)
         appsGrid = findViewById(R.id.appsGrid)
+        appsRow = findViewById(R.id.appsRow)
 
         val grotesk = ResourcesCompat.getFont(this, R.font.space_grotesk)
         heroTitle.typeface = grotesk
@@ -131,11 +151,21 @@ class HomeActivity : Activity() {
             setFontVariationSettings("'wght' 500")
         }
 
-        cwAdapter = CwAdapter(onFocus = ::showCard, onClick = ::openCard)
+        cwAdapter = CwAdapter(onFocus = { showCard(it, row = 0) }, onClick = ::openCard)
         cwRow.adapter = cwAdapter
         cwRow.itemAnimator = null // its add/change animations would cancel the focus zoom
         cwRow.horizontalSpacing = dp(14)
         alignRow(cwRow, dp(48 + 180 + 14))
+
+        cw2Adapter = CwAdapter(onFocus = { showCard(it, row = 1) }, onClick = ::openCard).apply { compact = true }
+        cwRow2.adapter = cw2Adapter
+        cwRow2.itemAnimator = null
+        cwRow2.horizontalSpacing = dp(14)
+        alignRow(cwRow2, dp(48 + 144 + 14))
+
+        appsRow.itemAnimator = null
+        appsRow.horizontalSpacing = dp(12)
+        alignRow(appsRow, dp(48 + 112 + 12))
 
         appsAdapter = AppsAdapter(onFocus = ::showApp, onClick = { apps.launch(this, it) }, onLongClick = ::editApp)
         appsGrid.adapter = appsAdapter
@@ -174,7 +204,7 @@ class HomeActivity : Activity() {
         }
         ContextCompat.registerReceiver(this, packageChanges, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
 
-        showCards(listOf(action(CwCard.Kind.LOADING, R.string.loading, getString(R.string.loading_message))))
+        showLoading()
     }
 
     override fun onResume() {
@@ -197,7 +227,8 @@ class HomeActivity : Activity() {
         // Home pressed while already on the home screen: back to the start of Continue watching.
         if (hasWindowFocus()) {
             cwRow.selectedPosition = 0
-            appsGrid.selectedPosition = 0
+            if (twoRows) cwRow2.selectedPosition = 0
+            appsView.selectedPosition = 0
             cwRow.requestFocus()
         }
     }
@@ -227,11 +258,13 @@ class HomeActivity : Activity() {
 
     private fun action(kind: CwCard.Kind, title: Int, message: String) = CwCard.Action(kind, getString(title), message)
 
-    /** The app Continue watching comes from: the user's pick (Plex or Netflix), Plex if that's gone. */
-    private fun cwSource(): String {
-        val pick = prefs.cwSource
-        return if (pick in CW_SOURCES && isInstalled(pick)) pick else PlexClient.PLEX_PACKAGE
-    }
+    /**
+     * The apps the Continue watching rows come from, top row first: the user's pick (Plex, Netflix,
+     * or both), Plex if those are gone.
+     */
+    private fun cwSources(): List<String> =
+        prefs.cwSources.filter { it in CW_SOURCES && isInstalled(it) }.distinct().take(2)
+            .ifEmpty { listOf(PlexClient.PLEX_PACKAGE) }
 
     private fun isInstalled(pkg: String): Boolean =
         try {
@@ -243,46 +276,103 @@ class HomeActivity : Activity() {
     private fun sourceName(pkg: String): String =
         getString(if (pkg == NETFLIX_PACKAGE) R.string.netflix else R.string.plex)
 
+    /** Loads every Continue watching row (one per source), each shown as soon as it's in. */
     private fun refreshContinueWatching() {
         cwJob?.cancel()
-        val source = cwSource()
-        val name = sourceName(source)
-        cwSourceLabel.text = getString(R.string.from_app, name)
+        val sources = cwSources()
+        applySections(two = sources.size == 2)
+        cwSourceLabel.text = getString(R.string.from_app, sourceName(sources[0]))
+        sources.getOrNull(1)?.let { cwSourceLabel2.text = getString(R.string.from_app, sourceName(it)) }
         cwJob = scope.launch {
-            val nothing = { listOf(CwCard.Action(CwCard.Kind.OPEN_SOURCE, getString(R.string.nothing_title), getString(R.string.nothing_message, name))) }
-            val cards = if (source == PlexClient.PLEX_PACKAGE) {
-                when (val state = withContext(Dispatchers.IO) { plex.continueWatching() }) {
-                    is CwState.NotLinked -> listOf(action(CwCard.Kind.LINK, R.string.link_title, getString(R.string.link_message)))
-                    is CwState.Failed -> listOf(action(CwCard.Kind.RETRY, R.string.unreachable_title, state.message))
-                    is CwState.Loaded -> if (state.items.isEmpty()) nothing() else state.items.map { CwCard.Item(it) }
-                }
-            } else {
-                // Apps other than Plex: what they publish for the TV home screen (see TvArt).
-                val items = withContext(Dispatchers.IO) { tvArt.continueWatching(source) }
-                when {
-                    items == null -> listOf(CwCard.Action(CwCard.Kind.GRANT, getString(R.string.grant_title, name), getString(R.string.grant_message)))
-                    items.isEmpty() -> nothing()
-                    else -> items.map { CwCard.Item(it) }
+            sources.forEachIndexed { row, source ->
+                launch {
+                    showCards(row, cardsFor(source))
+                    // Plex's backdrop comes from Continue watching.
+                    focusedApp?.takeIf { it.packageName == PlexClient.PLEX_PACKAGE && appsView.hasFocus() }?.let(::showApp)
                 }
             }
-            showCards(cards)
-            // Plex's backdrop comes from Continue watching.
-            focusedApp?.takeIf { it.packageName == PlexClient.PLEX_PACKAGE && appsGrid.hasFocus() }?.let(::showApp)
         }
     }
 
-    private fun showCards(cards: List<CwCard>) {
-        val rowHadFocus = cwRow.hasFocus()
-        cwAdapter.cards = cards
-        if (!placedInitialFocus) {
+    private suspend fun cardsFor(source: String): List<CwCard> {
+        val name = sourceName(source)
+        val nothing = { listOf(CwCard.Action(CwCard.Kind.OPEN_SOURCE, getString(R.string.nothing_title), getString(R.string.nothing_message, name), source)) }
+        if (source == PlexClient.PLEX_PACKAGE) {
+            return when (val state = withContext(Dispatchers.IO) { plex.continueWatching() }) {
+                is CwState.NotLinked -> listOf(action(CwCard.Kind.LINK, R.string.link_title, getString(R.string.link_message)))
+                is CwState.Failed -> listOf(action(CwCard.Kind.RETRY, R.string.unreachable_title, state.message))
+                is CwState.Loaded -> if (state.items.isEmpty()) nothing() else state.items.map { CwCard.Item(it) }
+            }
+        }
+        // Apps other than Plex: what they publish for the TV home screen (see TvArt).
+        val items = withContext(Dispatchers.IO) { tvArt.continueWatching(source) }
+        return when {
+            items == null -> listOf(CwCard.Action(CwCard.Kind.GRANT, getString(R.string.grant_title, name), getString(R.string.grant_message)))
+            items.isEmpty() -> nothing()
+            else -> items.map { CwCard.Item(it) }
+        }
+    }
+
+    private fun showCards(row: Int, cards: List<CwCard>) {
+        val view = if (row == 0) cwRow else cwRow2
+        val adapter = if (row == 0) cwAdapter else cw2Adapter
+        val rowHadFocus = view.hasFocus()
+        adapter.cards = cards
+        if (row == 0 && !placedInitialFocus) {
             placedInitialFocus = true
             cwRow.selectedPosition = 0
             cwRow.requestFocus()
             cwRow.post { if (!cwRow.hasFocus()) cwRow.requestFocus() }
         }
-        if (rowHadFocus || cwRow.hasFocus()) {
-            cards.getOrNull(cwRow.selectedPosition.coerceIn(0, cards.lastIndex))?.let { showCard(it) }
+        if (rowHadFocus || view.hasFocus()) {
+            cards.getOrNull(view.selectedPosition.coerceIn(0, cards.lastIndex))?.let { showCard(it, row) }
         }
+    }
+
+    /** Loading placeholders in every Continue watching row, while they reload. */
+    private fun showLoading() {
+        val loading = listOf(action(CwCard.Kind.LOADING, R.string.loading, getString(R.string.loading_message)))
+        showCards(0, loading)
+        if (twoRows) showCards(1, loading)
+    }
+
+    /**
+     * One Continue watching row: tiles of 180x102 dp, apps in rows of seven (the positions in
+     * activity_home.xml). Two rows: both with 144x81 dp tiles, and the apps in one row that
+     * scrolls sideways, in the space of the second app row.
+     */
+    private fun applySections(two: Boolean) {
+        if (two == twoRows) return
+        twoRows = two
+        fun View.place(topDp: Int, heightDp: Int? = null) = updateLayoutParams<ViewGroup.MarginLayoutParams> {
+            topMargin = dp(topDp)
+            if (heightDp != null) height = dp(heightDp)
+        }
+        if (two) {
+            cwHeader.place(188)
+            cwRow.place(208, 81 + 16)
+            cwHeader2.place(303)
+            cwRow2.place(323, 81 + 16)
+            appsLabel.place(418)
+            appsRow.place(438, 63 + 16)
+            appsGrid.adapter = null // an adapter can only serve one view
+            appsRow.adapter = appsAdapter
+        } else {
+            cwHeader.place(192)
+            cwRow.place(214, 102 + 16)
+            appsLabel.place(340)
+            appsGrid.place(362, 152)
+            appsRow.adapter = null
+            appsGrid.adapter = appsAdapter
+            cw2Adapter.cards = emptyList()
+        }
+        cwAdapter.compact = two
+        alignRow(cwRow, dp(48 + (if (two) 144 else 180) + 14))
+        val second = if (two) View.VISIBLE else View.GONE
+        cwHeader2.visibility = second
+        cwRow2.visibility = second
+        appsRow.visibility = second
+        appsGrid.visibility = if (two) View.GONE else View.VISIBLE
     }
 
     private fun loadApps(focus: String? = null) {
@@ -294,8 +384,8 @@ class HomeActivity : Activity() {
             if (focus != null) {
                 val index = row.indexOfFirst { it.packageName == focus }
                 if (index >= 0) {
-                    appsGrid.selectedPosition = index
-                    appsGrid.requestFocus()
+                    appsView.selectedPosition = index
+                    appsView.requestFocus()
                 }
             }
         }
@@ -306,13 +396,20 @@ class HomeActivity : Activity() {
         artJob?.cancel()
         artJob = scope.launch {
             appArt = withContext(Dispatchers.IO) { tvArt.load() }
-            focusedApp?.takeIf { appsGrid.hasFocus() }?.let(::showApp)
+            focusedApp?.takeIf { appsView.hasFocus() }?.let(::showApp)
         }
+    }
+
+    /** Brightens the label of the focused section: 0 and 1 the Continue watching rows, 2 the apps. */
+    private fun highlight(section: Int) {
+        cwLabel.setTextColor(getColor(if (section == 0) R.color.text else R.color.text_muted))
+        cwLabel2.setTextColor(getColor(if (section == 1) R.color.text else R.color.text_muted))
+        appsLabel.setTextColor(getColor(if (section == 2) R.color.text else R.color.text_muted))
     }
 
     // ---- hero ----
 
-    private fun showCard(card: CwCard) {
+    private fun showCard(card: CwCard, row: Int) {
         focusedApp = null
         when (card) {
             is CwCard.Item -> {
@@ -325,16 +422,14 @@ class HomeActivity : Activity() {
                 showBackdrop(emptyList(), glowColor = null)
             }
         }
-        cwLabel.setTextColor(getColor(R.color.text))
-        appsLabel.setTextColor(getColor(R.color.text_muted))
+        highlight(row)
     }
 
     private fun showApp(app: AppEntry) {
         focusedApp = app
         setHero(app.label, if (app.packageName == moving) getString(R.string.move_hint) else null, null, null)
         showBackdrop(artFor(app), glowColor = accentOf(app))
-        cwLabel.setTextColor(getColor(R.color.text_muted))
-        appsLabel.setTextColor(getColor(R.color.text))
+        highlight(2)
     }
 
     /**
@@ -343,7 +438,8 @@ class HomeActivity : Activity() {
      */
     private fun artFor(app: AppEntry): List<String> {
         val art = if (app.packageName == PlexClient.PLEX_PACKAGE) {
-            cwAdapter.cards.mapNotNull { (it as? CwCard.Item)?.item?.takeIf { i -> i.app == app.packageName }?.artUrl }.take(1)
+            (cwAdapter.cards + cw2Adapter.cards)
+                .mapNotNull { (it as? CwCard.Item)?.item?.takeIf { i -> i.app == app.packageName }?.artUrl }.take(1)
         } else {
             appArt[app.packageName].orEmpty()
         }
@@ -485,10 +581,10 @@ class HomeActivity : Activity() {
             is CwCard.Action -> when (card.kind) {
                 CwCard.Kind.LINK -> startActivity(Intent(this, PlexLinkActivity::class.java))
                 CwCard.Kind.RETRY -> {
-                    showCards(listOf(action(CwCard.Kind.LOADING, R.string.loading, getString(R.string.loading_message))))
+                    showLoading()
                     refreshContinueWatching()
                 }
-                CwCard.Kind.OPEN_SOURCE -> launchPackage(cwSource())
+                CwCard.Kind.OPEN_SOURCE -> launchPackage(card.app ?: cwSources().first())
                 CwCard.Kind.GRANT, CwCard.Kind.LOADING -> Unit
             }
         }
@@ -647,33 +743,49 @@ class HomeActivity : Activity() {
     }
 
     private fun editApp(app: AppEntry) {
-        // Plex and Netflix can feed Continue watching: offer it on the one that doesn't now.
-        val canFeedRow = app.packageName in CW_SOURCES && app.packageName != cwSource()
-        val choices = listOfNotNull(
-            getString(R.string.use_for_cw).takeIf { canFeedRow },
-            getString(R.string.move),
-            getString(R.string.remove_from_row),
+        val pkg = app.packageName
+        val sources = cwSources()
+        // Plex and Netflix can each feed a Continue watching row, alone or one row each.
+        val rowChoices: List<Pair<String, () -> Unit>> = when {
+            pkg !in CW_SOURCES -> emptyList()
+            pkg !in sources -> listOf(
+                getString(R.string.use_for_cw) to { setCwSources(listOf(pkg), pkg) },
+                getString(R.string.add_cw_row) to { setCwSources(sources + pkg, pkg) },
+            )
+            sources.size == 2 -> listOfNotNull(
+                (getString(R.string.cw_row_first) to { setCwSources(listOf(pkg) + (sources - pkg), pkg) }).takeIf { sources[1] == pkg },
+                getString(R.string.remove_cw_row) to { setCwSources(sources - pkg, pkg) },
+            )
+            else -> emptyList() // the only row: switch from the other app
+        }
+        val choices: List<Pair<String, () -> Unit>> = rowChoices + listOf(
+            getString(R.string.move) to { startMove(app) },
+            getString(R.string.remove_from_row) to {
+                apps.remove(pkg)
+                loadApps()
+            },
         )
         AlertDialog.Builder(this, R.style.Theme_Cinema_Dialog)
             .setTitle(app.label)
-            .setItems(choices.toTypedArray()) { _, which ->
-                when (choices[which]) {
-                    getString(R.string.use_for_cw) -> useForContinueWatching(app.packageName)
-                    getString(R.string.move) -> startMove(app)
-                    else -> {
-                        apps.remove(app.packageName)
-                        loadApps()
-                    }
-                }
-            }
+            .setItems(choices.map { it.first }.toTypedArray()) { _, which -> choices[which].second() }
             .show()
     }
 
-    private fun useForContinueWatching(pkg: String) {
-        prefs.cwSource = pkg
-        Toast.makeText(this, getString(R.string.cw_switched, sourceName(pkg)), Toast.LENGTH_SHORT).show()
-        showCards(listOf(action(CwCard.Kind.LOADING, R.string.loading, getString(R.string.loading_message))))
-        refreshContinueWatching()
+    /** Sets the Continue watching rows (one or two apps, top first), keeping focus on [focus]'s tile. */
+    private fun setCwSources(sources: List<String>, focus: String) {
+        val before = cwSources()
+        prefs.cwSources = sources
+        val message = if (sources.size == 2) {
+            getString(R.string.cw_two_rows, sourceName(sources[0]), sourceName(sources[1]))
+        } else {
+            getString(R.string.cw_switched, sourceName(sources[0]))
+        }
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        refreshContinueWatching() // lays the screen out for one or two rows
+        // A placeholder in the rows whose app changed; the others keep their tiles while they reload.
+        val loading = listOf(action(CwCard.Kind.LOADING, R.string.loading, getString(R.string.loading_message)))
+        sources.forEachIndexed { row, source -> if (before.getOrNull(row) != source) showCards(row, loading) }
+        loadApps(focus = focus) // the apps may have moved between the grid and the single row
     }
 
     // ---- moving an app ----
@@ -692,8 +804,8 @@ class HomeActivity : Activity() {
     /** Keeps focus on the lifted tile (after the menu closes, focus could land elsewhere). */
     private fun focusLifted(index: Int) {
         if (index < 0) return
-        appsGrid.selectedPosition = index
-        if (!appsGrid.hasFocus()) appsGrid.requestFocus()
+        appsView.selectedPosition = index
+        if (!appsView.hasFocus()) appsView.requestFocus()
     }
 
     private fun endMove(keep: Boolean) {
@@ -709,7 +821,10 @@ class HomeActivity : Activity() {
         loadApps(focus = pkg)
     }
 
-    /** One step of the lifted app: Left/Right one place (wrapping across rows), Up/Down one row. */
+    /**
+     * One step of the lifted app: Left/Right one place (wrapping across rows), Up/Down one row.
+     * In the single row of apps (two Continue watching rows), only Left/Right.
+     */
     private fun stepMove(pkg: String, keyCode: Int) {
         val from = appsAdapter.apps.indexOfFirst { it.packageName == pkg }
         if (from < 0) return
@@ -717,12 +832,7 @@ class HomeActivity : Activity() {
         val to = when (keyCode) {
             KeyEvent.KEYCODE_DPAD_LEFT -> from - 1
             KeyEvent.KEYCODE_DPAD_RIGHT -> from + 1
-            KeyEvent.KEYCODE_DPAD_UP -> from - APP_COLUMNS
-            // Down from a row above a shorter last row: to the end of the row.
-            KeyEvent.KEYCODE_DPAD_DOWN ->
-                if (from + APP_COLUMNS <= last) from + APP_COLUMNS
-                else if (from / APP_COLUMNS < last / APP_COLUMNS) last
-                else from
+            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> if (twoRows) from else stepRow(from, last, keyCode)
             else -> from
         }
         if (to !in 0..last || to == from) {
@@ -732,6 +842,17 @@ class HomeActivity : Activity() {
         appsAdapter.moveItem(from, to)
         focusLifted(to)
     }
+
+    private fun stepRow(from: Int, last: Int, keyCode: Int): Int =
+        when (keyCode) {
+            KeyEvent.KEYCODE_DPAD_UP -> from - APP_COLUMNS
+            // Down from a row above a shorter last row: to the end of the row.
+            KeyEvent.KEYCODE_DPAD_DOWN ->
+                if (from + APP_COLUMNS <= last) from + APP_COLUMNS
+                else if (from / APP_COLUMNS < last / APP_COLUMNS) last
+                else from
+            else -> from
+        }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val pkg = moving ?: return super.dispatchKeyEvent(event)

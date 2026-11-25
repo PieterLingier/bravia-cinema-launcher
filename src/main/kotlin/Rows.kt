@@ -43,7 +43,8 @@ private fun resetFocusLook(view: View, scale: Float) {
 /** A tile in the Continue watching row: an item (Plex or Netflix), or a single action (link, retry…). */
 sealed class CwCard {
     data class Item(val item: CwItem) : CwCard()
-    data class Action(val kind: Kind, val title: String, val message: String) : CwCard()
+    /** [app]: the app the row comes from, for OPEN_SOURCE. */
+    data class Action(val kind: Kind, val title: String, val message: String, val app: String? = null) : CwCard()
 
     /** OPEN_SOURCE opens the app the row comes from; GRANT explains the missing permission. */
     enum class Kind { LOADING, LINK, RETRY, OPEN_SOURCE, GRANT }
@@ -59,6 +60,14 @@ class CwAdapter(
     }
 
     var cards: List<CwCard> = emptyList()
+        set(value) {
+            if (value == field) return
+            field = value
+            notifyDataSetChanged()
+        }
+
+    /** Smaller tiles (144x81 dp instead of 180x102), for when two Continue watching rows share the screen. */
+    var compact = false
         set(value) {
             if (value == field) return
             field = value
@@ -87,6 +96,16 @@ class CwAdapter(
 
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val card = cards[position]
+        val context = holder.itemView.context
+        val width = context.dp(if (compact) 144 else 180)
+        val height = context.dp(if (compact) 81 else 102)
+        holder.itemView.layoutParams.let { params ->
+            if (params.width != width || params.height != height) {
+                params.width = width
+                params.height = height
+                holder.itemView.layoutParams = params
+            }
+        }
         holder.itemView.setOnFocusChangeListener { v, hasFocus ->
             animateFocus(v, hasFocus, 1.08f)
             if (hasFocus) onFocus(card)

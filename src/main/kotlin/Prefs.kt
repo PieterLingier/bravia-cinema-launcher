@@ -59,11 +59,15 @@ class Prefs(context: Context) {
             sp.edit().putStringSet(KEY_KNOWN, value).apply()
         }
 
-    /** The app the Continue watching row comes from (package name): Plex unless the user picked another. */
-    var cwSource: String
-        get() = sp.getString(KEY_CW_SOURCE, null) ?: PlexClient.PLEX_PACKAGE
+    /**
+     * The apps the Continue watching rows come from (package names), top row first: Plex unless the
+     * user picked another, or two apps for two rows. (1.4 stored a single app under KEY_CW_SOURCE.)
+     */
+    var cwSources: List<String>
+        get() = sp.getString(KEY_CW_SOURCES, null)?.split('\n')?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() }
+            ?: listOf(sp.getString(KEY_CW_SOURCE, null) ?: PlexClient.PLEX_PACKAGE)
         set(value) {
-            sp.edit().putString(KEY_CW_SOURCE, value).apply()
+            sp.edit().putString(KEY_CW_SOURCES, value.joinToString("\n")).remove(KEY_CW_SOURCE).apply()
         }
 
     fun forgetPlex() {
@@ -81,5 +85,6 @@ class Prefs(context: Context) {
         const val KEY_ROW = "rowOrder"
         const val KEY_KNOWN = "knownPackages"
         const val KEY_CW_SOURCE = "cwSource"
+        const val KEY_CW_SOURCES = "cwSources"
     }
 }

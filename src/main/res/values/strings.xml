@@ -22,6 +22,10 @@
     <string name="grant_message">Allow \"read TV listings\" over adb (see the README), then come back</string>
     <string name="use_for_cw">Use for Continue watching</string>
     <string name="cw_switched">Continue watching now comes from %1$s</string>
+    <string name="add_cw_row">Add a second Continue watching row</string>
+    <string name="remove_cw_row">Remove its Continue watching row</string>
+    <string name="cw_row_first">Show its row on top</string>
+    <string name="cw_two_rows">Continue watching: %1$s on top, %2$s below</string>
 
     <string name="move">Move</string>
     <string name="move_hint">Move it with the arrows · OK to place it · Back to cancel</string>

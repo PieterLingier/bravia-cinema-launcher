@@ -2,8 +2,8 @@
 
 A custom Android TV launcher for the BRAVIA 4K UR3 (Android TV 10), built from mockup A "Cinema":
 
-- **Continue watching** from your Plex server (or from Netflix, if you pick it), with the focused show's artwork filling the screen
-- **Your media apps in two rows of seven** (more rows scroll down): Plex, Netflix, YouTube, Disney+, TV Vlaanderen, VTM GO, VRT MAX, Play, Telenet TV, DAZN, Apple TV, Red Bull TV, YouTube Music and Live TV.
+- **Continue watching** from your Plex server (or from Netflix, or a row for each), with the focused show's artwork filling the screen
+- **Your media apps in two rows of seven** (more rows scroll down; one row that scrolls sideways when there are two Continue watching rows): Plex, Netflix, YouTube, Disney+, TV Vlaanderen, VTM GO, VRT MAX, Play, Telenet TV, DAZN, Apple TV, Red Bull TV, YouTube Music and Live TV.
   The focused app fills the screen with its own artwork: what you were last watching in it, or the top of the rows
   it publishes for the TV home screen. Plex shows what you'd resume. Apps that publish no artwork (YouTube, DAZN,
   VRT MAX, Play, YouTube Music) show their own banner, large and dimmed, on a wall of its background colour.
@@ -17,6 +17,7 @@ A custom Android TV launcher for the BRAVIA 4K UR3 (Android TV 10), built from m
 | OK on an app | Opens the app |
 | Hold OK on an app | Move it, or remove it from the home screen |
 | Hold OK on Netflix or Plex | Also: **Use for Continue watching**, to fill that row from Netflix instead of Plex, or back (Plex is the default) |
+| | Or **Add a second Continue watching row**: Plex and Netflix each get a row (slightly smaller tiles), and the apps move into one row that scrolls sideways. **Remove its Continue watching row** goes back to one; **Show its row on top** swaps them |
 | Move | The app lifts (larger, orange ring); the arrows carry it through the grid, OK puts it down, Back cancels |
 | All apps (top right) | Every app; hold OK on one to add it to the row or remove it |
 | Home or Back | Back to the start of Continue watching |
@@ -35,7 +36,7 @@ Download the newest `cinema-launcher-<version>.apk` from the [Releases page](htt
 "Build" seven times) and USB or network debugging in Developer options, connect with `adb connect <TV-IP>:5555`, then:
 
 ```powershell
-adb install -r cinema-launcher-1.4.apk
+adb install -r cinema-launcher-1.5.apk
 ```
 
 A newer version installs the same way, over the old one; your Plex link and app order stay.
