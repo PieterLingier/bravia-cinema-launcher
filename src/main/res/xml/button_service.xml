@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Key filtering, plus Plex's window events (type and class name only, to see when Plex has
-     loaded). No access to screen content. -->
+<!-- Key filtering, plus window events from Plex (type and class name only, to see when Plex has
+     loaded) and from Google's home screens (package only, to open Cinema in their place at
+     start-up). ButtonService adds the TV's current default home app. No access to screen content. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewFocused"
-    android:packageNames="com.plexapp.android"
+    android:packageNames="com.plexapp.android,com.google.android.apps.tv.launcherx,com.google.android.tvlauncher"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagRequestFilterKeyEvents"
     android:canRequestFilterKeyEvents="true"

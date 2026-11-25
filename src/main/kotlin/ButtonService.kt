@@ -1,9 +1,14 @@
 package local.cinema.launcher
 
 import android.accessibilityservice.AccessibilityService
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.os.SystemClock
 import android.util.Log
+import androidx.core.content.ContextCompat
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 
@@ -19,10 +24,38 @@ import android.view.accessibility.AccessibilityEvent
  *
  * Every other key is passed on untouched. The service also receives Plex's window events (type and
  * class name only, never screen content) so [PlexWatch] can tell when Plex is ready for a link.
+ *
+ * **Start-up → Cinema, again only while Cinema isn't the home app.** When the TV starts or wakes
+ * from standby, Android opens its default home screen without any key press, so the Home rule above
+ * never sees it. For a short while after start-up or waking ([STARTUP_MS], ended early by the first
+ * key press), whenever the default home screen's window shows up, the service opens Cinema in its
+ * place. The key press ends it so that whatever the viewer opens on purpose afterwards is left alone
+ * (Google TV's settings panel lives in its home app). Only the package of those events is used.
  */
 class ButtonService : AccessibilityService() {
 
-    override fun onKeyEvent(event: KeyEvent): Boolean = when (event.keyCode) {
+    /** Until when (SystemClock.uptimeMillis) the default home screen is replaced by Cinema; 0 = off. */
+    @Volatile private var startupUntil = 0L
+
+    /** When Cinema was last opened for that, so a burst of home-screen events opens it once. */
+    private var openedAt = 0L
+
+    /** The packages of the other home screens, whose windows trigger the start-up switch. */
+    private var homePackages = emptySet<String>()
+
+    private val screenOn = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) = startStartup("screen on")
+    }
+
+    override fun onKeyEvent(event: KeyEvent): Boolean {
+        // The viewer is using the remote: from now on, the screen they see is their choice.
+        if (startupUntil != 0L && event.action == KeyEvent.ACTION_DOWN && event.keyCode !in WAKE_KEYS) {
+            startupUntil = 0L
+        }
+        return handleKey(event)
+    }
+
+    private fun handleKey(event: KeyEvent): Boolean = when (event.keyCode) {
         REMAPPED_KEY -> {
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) openPlex()
             true // consume down, repeats and up, so the original action never runs
@@ -43,6 +76,20 @@ class ButtonService : AccessibilityService() {
         val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
         val resolved = packageManager.resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY)
         return resolved?.activityInfo?.packageName == packageName
+    }
+
+    /** Replace the default home screen by Cinema for [STARTUP_MS], unless Cinema is the home app. */
+    private fun startStartup(why: String) {
+        if (cinemaIsHome()) return
+        startupUntil = SystemClock.uptimeMillis() + STARTUP_MS
+        Log.i(TAG, "start-up ($why): the default home screen opens Cinema for ${STARTUP_MS / 1000} s")
+    }
+
+    /** The other home screens: Android's current default, plus Google's two (in case it resolves to a chooser). */
+    private fun otherHomePackages(): Set<String> {
+        val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        val default = packageManager.resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
+        return GOOGLE_HOMES + listOfNotNull(default) - setOf(packageName, "android")
     }
 
     private fun openCinema() {
@@ -74,24 +121,52 @@ class ButtonService : AccessibilityService() {
     }
 
     override fun onServiceConnected() {
+        homePackages = otherHomePackages()
         // Also set in button_service.xml, but Android keeps the old settings after an app update
         // until the service is switched off and on, so set them here too.
         serviceInfo = serviceInfo.apply {
             eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
                 AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or AccessibilityEvent.TYPE_VIEW_FOCUSED
-            packageNames = arrayOf(PlexClient.PLEX_PACKAGE)
+            packageNames = (homePackages + PlexClient.PLEX_PACKAGE).toTypedArray()
         }
         PlexWatch.connected = true
+        ContextCompat.registerReceiver(
+            this, screenOn, IntentFilter(Intent.ACTION_SCREEN_ON), ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        // Android connects the service while the TV starts up. Later (switched on by hand, or after
+        // an app update) it isn't start-up any more.
+        if (SystemClock.elapsedRealtime() < BOOT_MS) startStartup("boot")
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
         PlexWatch.connected = false
+        try {
+            unregisterReceiver(screenOn)
+        } catch (_: IllegalArgumentException) {
+            // not registered
+        }
         return super.onUnbind(intent)
     }
 
-    /** Plex's window events only (see button_service.xml); used to see when Plex has loaded. */
+    /**
+     * Window events from Plex (to see when Plex has loaded) and from the other home screens (to
+     * replace them by Cinema at start-up); see button_service.xml.
+     */
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event != null) PlexWatch.onEvent(event.eventType, event.className?.toString())
+        if (event == null) return
+        val pkg = event.packageName?.toString()
+        if (pkg == PlexClient.PLEX_PACKAGE) {
+            PlexWatch.onEvent(event.eventType, event.className?.toString())
+        } else if (pkg in homePackages && startupUntil != 0L) {
+            val now = SystemClock.uptimeMillis()
+            if (now > startupUntil) {
+                startupUntil = 0L
+            } else if (!HomeActivity.inFront && now - openedAt > REOPEN_MS) {
+                openedAt = now
+                Log.i(TAG, "start-up: the default home screen showed up, opening Cinema")
+                openCinema()
+            }
+        }
     }
 
     override fun onInterrupt() = Unit
@@ -99,5 +174,16 @@ class ButtonService : AccessibilityService() {
     private companion object {
         const val TAG = "CinemaButton"
         const val REMAPPED_KEY = KeyEvent.KEYCODE_BUTTON_8 // the remote's Google Play button
+        const val STARTUP_MS = 60_000L // how long after start-up or waking the home screen is replaced
+        const val BOOT_MS = 5 * 60_000L // service connected this soon after boot: that's start-up
+        const val REOPEN_MS = 1_500L // at most one Cinema launch per burst of home-screen events
+
+        /** Google TV's home screen, and the older Android TV one. */
+        val GOOGLE_HOMES = setOf("com.google.android.apps.tv.launcherx", "com.google.android.tvlauncher")
+
+        /** Keys that wake the TV: their key-up can arrive after waking, so they don't end start-up. */
+        val WAKE_KEYS = setOf(
+            KeyEvent.KEYCODE_POWER, KeyEvent.KEYCODE_TV_POWER, KeyEvent.KEYCODE_WAKEUP, KeyEvent.KEYCODE_SLEEP,
+        )
     }
 }

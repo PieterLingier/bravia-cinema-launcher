@@ -215,8 +215,14 @@ class HomeActivity : Activity() {
         refreshContinueWatching()
     }
 
+    override fun onStart() {
+        super.onStart()
+        inFront = true
+    }
+
     override fun onStop() {
         super.onStop()
+        inFront = false
         endMove(keep = false) // screen off or another app in front mid-move: put the app back
         stopSignal?.complete(Unit) // another app (Plex) is now on screen
     }
@@ -874,19 +880,23 @@ class HomeActivity : Activity() {
         return true
     }
 
-    private companion object {
-        const val TAG = "Cinema"
-        const val APP_COLUMNS = 7 // 7 x 112 dp tiles + 6 x 12 dp gaps fit the 864 dp between the margins
-        const val FIRST_LINK_MS = 9_000L // without the ready signal; cold start: a link at 6 s errors, at 9 s it plays
-        const val READY_MAX_MS = 15_000L // longest wait for Plex's ready signal (cold: 7-11 s)
-        const val NO_EVENTS_MS = 4_000L // no Plex events by then: they aren't coming, use FIRST_LINK_MS
-        const val READY_MARGIN_MS = 500L // after the signal (warm: a link 1 s after the window plays)
-        const val RETRY_AFTER_MS = 25_000L // playback can take up to ~17 s to start; don't interrupt it
-        const val MAX_LINKS = 2
-        const val GIVE_UP_MS = 60_000L
-        const val ACTION_VIEW_INPUTS = "com.android.tv.action.VIEW_INPUTS"
-        const val LIVE_TV_PACKAGE = "com.sony.dtv.tvx"
-        const val NETFLIX_PACKAGE = "com.netflix.ninja"
-        val CW_SOURCES = setOf(PlexClient.PLEX_PACKAGE, NETFLIX_PACKAGE) // apps that can feed Continue watching
+    companion object {
+        /** Whether Cinema's home screen is on screen (between onStart and onStop). */
+        @Volatile var inFront = false
+            private set
+
+        private const val TAG = "Cinema"
+        private const val APP_COLUMNS = 7 // 7 x 112 dp tiles + 6 x 12 dp gaps fit the 864 dp between the margins
+        private const val FIRST_LINK_MS = 9_000L // without the ready signal; cold start: a link at 6 s errors, at 9 s it plays
+        private const val READY_MAX_MS = 15_000L // longest wait for Plex's ready signal (cold: 7-11 s)
+        private const val NO_EVENTS_MS = 4_000L // no Plex events by then: they aren't coming, use FIRST_LINK_MS
+        private const val READY_MARGIN_MS = 500L // after the signal (warm: a link 1 s after the window plays)
+        private const val RETRY_AFTER_MS = 25_000L // playback can take up to ~17 s to start; don't interrupt it
+        private const val MAX_LINKS = 2
+        private const val GIVE_UP_MS = 60_000L
+        private const val ACTION_VIEW_INPUTS = "com.android.tv.action.VIEW_INPUTS"
+        private const val LIVE_TV_PACKAGE = "com.sony.dtv.tvx"
+        private const val NETFLIX_PACKAGE = "com.netflix.ninja"
+        private val CW_SOURCES = setOf(PlexClient.PLEX_PACKAGE, NETFLIX_PACKAGE) // apps that can feed Continue watching
     }
 }
