@@ -7,6 +7,8 @@ A custom Android TV launcher for the BRAVIA 4K UR3 (Android TV 10), built from m
   The focused app fills the screen with its own artwork: what you were last watching in it, or the top of the rows
   it publishes for the TV home screen. Plex shows what you'd resume. Apps that publish no artwork (YouTube, DAZN,
   VRT MAX, Play, YouTube Music) show their own banner, large and dimmed, on a wall of its background colour.
+  An app whose tile banner is only a logo on a see-through or plain grey background (SmartTube's is) gets a plain
+  white tile instead (black behind a light logo), with its icon if the banner was grey, so it matches the others.
 - **Inputs, All apps and Settings** in the top bar, so nothing from the old home screen is out of reach
 
 ## Using it

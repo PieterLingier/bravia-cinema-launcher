@@ -1,6 +1,7 @@
 package local.cinema.launcher
 
 import android.content.Context
+import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -219,7 +220,14 @@ class AppsAdapter(
         }
         if (app.banner != null) {
             holder.banner.visibility = View.VISIBLE
-            holder.banner.setImageDrawable(app.banner)
+            // A banner that doesn't fill its tile by itself (see TileBackground) gets a plain fill, and a
+            // logo-on-grey banner is replaced by the app's icon, centred. Tiles are reused: reset all three.
+            val tile = app.tile
+            holder.banner.setImageDrawable(tile?.image ?: app.banner)
+            holder.banner.setBackgroundColor(tile?.fill ?: Color.TRANSPARENT)
+            holder.banner.scaleType = if (tile?.fit == true) ImageView.ScaleType.FIT_CENTER else ImageView.ScaleType.CENTER_CROP
+            val pad = if (tile?.fit == true) holder.itemView.context.dp(ICON_PADDING_DP) else 0
+            holder.banner.setPadding(pad, pad, pad, pad)
             holder.fallback.visibility = View.GONE
         } else {
             holder.banner.visibility = View.GONE
@@ -231,5 +239,6 @@ class AppsAdapter(
 
     private companion object {
         const val LIFTED_SCALE = 1.2f
+        const val ICON_PADDING_DP = 4 // around an app icon drawn in place of its banner
     }
 }
