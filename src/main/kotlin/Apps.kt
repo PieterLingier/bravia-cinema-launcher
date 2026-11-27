@@ -13,6 +13,8 @@ data class AppEntry(
     val label: String,
     val banner: Drawable?,
     val icon: Drawable?,
+    /** How to draw the tile when the banner doesn't fill it by itself; null: the banner as it comes. */
+    val tile: TileBackground.Style? = null,
 )
 
 /** Installed TV apps, and which of them make up the home row. */
@@ -27,12 +29,15 @@ class AppRepo(private val context: Context, private val prefs: Prefs) {
             .distinctBy { it.activityInfo.packageName }
             .map { info ->
                 val activity = info.activityInfo
+                val banner = if (withImages) activity.loadBanner(pm) ?: activity.applicationInfo.loadBanner(pm) else null
+                val icon = if (withImages) info.loadIcon(pm) else null
                 AppEntry(
                     packageName = activity.packageName,
                     component = ComponentName(activity.packageName, activity.name),
                     label = info.loadLabel(pm).toString(),
-                    banner = if (withImages) activity.loadBanner(pm) ?: activity.applicationInfo.loadBanner(pm) else null,
-                    icon = if (withImages) info.loadIcon(pm) else null,
+                    banner = banner,
+                    icon = icon,
+                    tile = banner?.let { TileBackground.forApp(it, icon) },
                 )
             }
             .sortedBy { it.label.lowercase() }
